@@ -1,0 +1,1 @@
+# crpto-trading-bot
