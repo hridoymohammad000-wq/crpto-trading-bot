@@ -1,4 +1,4 @@
-﻿"""Pure EMA/RSI/ADX momentum strategy.
+"""Pure EMA/RSI/ADX momentum strategy.
 
 History requirements are 28 closed 5m candles (ADX14 is the limiting indicator)
 and 22 closed 15m candles (current and previous seeded EMA21 values). Average
@@ -130,13 +130,6 @@ class EmaRsiAdxMomentumStrategy:
         if snapshot.side == SignalSide.BUY:
             if not Decimal(52) <= rsi_value <= Decimal(70):
                 reasons.append(NoSignalReason.RSI_FILTER_FAILED)
-            candle_confirmed = (
-                snapshot.current_candle.close > snapshot.current_candle.open
-                and snapshot.current_candle.close > ema_fast
-                and snapshot.current_candle.close > ema_slow
-            )
-            if not candle_confirmed:
-                reasons.append(NoSignalReason.CANDLE_CONFIRMATION_FAILED)
             if not htf_fast > htf_slow:
                 reasons.append(NoSignalReason.HTF_TREND_FAILED)
             if not htf_fast > htf_previous:
@@ -144,13 +137,6 @@ class EmaRsiAdxMomentumStrategy:
         else:
             if not Decimal(30) <= rsi_value <= Decimal(48):
                 reasons.append(NoSignalReason.RSI_FILTER_FAILED)
-            candle_confirmed = (
-                snapshot.current_candle.close < snapshot.current_candle.open
-                and snapshot.current_candle.close < ema_fast
-                and snapshot.current_candle.close < ema_slow
-            )
-            if not candle_confirmed:
-                reasons.append(NoSignalReason.CANDLE_CONFIRMATION_FAILED)
             if not htf_fast < htf_slow:
                 reasons.append(NoSignalReason.HTF_TREND_FAILED)
             if not htf_fast < htf_previous:
