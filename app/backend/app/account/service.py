@@ -1,3 +1,4 @@
+﻿import asyncio
 from decimal import Decimal
 from typing import Literal
 
@@ -14,8 +15,10 @@ class AccountService:
         self.exchange_client = exchange_client
 
     async def get_summary(self) -> AccountSummaryResponse:
-        balance = await self.exchange_client.get_account_balance()
-        account_info = await self.exchange_client.get_account_info()
+        balance, account_info = await asyncio.gather(
+            self.exchange_client.get_account_balance(),
+            self.exchange_client.get_account_info(),
+        )
 
         capacity_source: Literal["TOTAL_AVAILABLE_BALANCE", "ISOLATED_DERIVED", "UNAVAILABLE"] = "UNAVAILABLE"
         available_trading_capacity: Decimal | None = None
@@ -86,3 +89,4 @@ class AccountService:
     async def get_open_orders(self) -> list[dict[str, object]]:
         orders = await self.exchange_client.get_open_orders()
         return list(orders)
+

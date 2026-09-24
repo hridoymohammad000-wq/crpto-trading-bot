@@ -1,4 +1,4 @@
-import json
+﻿import json
 from typing import Any
 
 import httpx
@@ -46,7 +46,7 @@ class AIAnalysisService:
             "Analyze only the supplied snapshot. Never claim to place or approve orders. "
             "Never instruct the system to bypass deterministic strategy, risk, readiness, "
             "reconciliation, or ExecutionService controls. Never change SL/TP. "
-            "Clearly separate observations, risks, and questions to investigate."
+            "Treat null or missing snapshot fields as unavailable data, never as zero or inactive. " + "Prefer scannerStatus, scannerCandidates, scannerWatchlist, and botRuntime as the live runtime sources. " + "Use snapshotFetchedAt when describing freshness. Do not claim a service is inactive merely because data is unavailable. " + "Treat null or missing snapshot fields as unavailable data, never as zero or inactive. " + "Prefer scannerStatus, scannerCandidates, scannerWatchlist, and botRuntime as the live runtime sources. " + "Use snapshotFetchedAt when describing freshness. Do not claim a service is inactive merely because data is unavailable. " + "Clearly separate observations, risks, and questions to investigate."
         )
         user_payload = {
             "question": question or "Review this snapshot and identify useful observations and risks.",
@@ -84,3 +84,5 @@ class AIAnalysisService:
         if not text:
             raise RuntimeError("AI provider returned no text output")
         return text
+
+

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+﻿from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from app.models.candle import Candle
@@ -85,7 +85,7 @@ class PipelineStateMachine:
             "rvol": float(indicators.volume / indicators.average_volume) if indicators and indicators.volume is not None and indicators.average_volume else None,
             "crossover_age": crossover_age,
             "setup_valid": has_signal,
-            "entry_window_valid": crossover_age is not None and crossover_age <= 1,
+            "entry_window_valid": crossover_age is not None and crossover_age <= 3,
             "strategy_reasons": reasons,
             "time": evaluation.evaluation_time.isoformat(),
         }
@@ -158,3 +158,5 @@ class PipelineStateMachine:
         state.cooldown_until = None
         state.reason_codes = ["COOLDOWN_EXPIRED"]
         return True
+
+

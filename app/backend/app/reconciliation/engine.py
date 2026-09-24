@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import logging
 from datetime import datetime, timezone
 from enum import Enum
@@ -81,9 +81,11 @@ class ReconciliationEngine:
             try:
                 # 1. Fetch Bybit data
                 try:
-                    summary = await self._account.get_summary()
-                    positions = await self._account.get_positions()
-                    open_orders = await self._account.get_open_orders()
+                    summary, positions, open_orders = await asyncio.gather(
+                        self._account.get_summary(),
+                        self._account.get_positions(),
+                        self._account.get_open_orders(),
+                    )
                 except Exception as exc:
                     self._status = ReconciliationStatus.ACCOUNT_UNAVAILABLE
                     self._last_result = ReconciliationResult(
@@ -271,3 +273,4 @@ class ReconciliationEngine:
                 )
             finally:
                 self._has_completed_once = self._last_result is not None
+

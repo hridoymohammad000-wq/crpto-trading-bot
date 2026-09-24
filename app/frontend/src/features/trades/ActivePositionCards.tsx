@@ -9,6 +9,12 @@ interface Props {
   isLiveUpdates?: boolean;
 }
 
+/** Safely format a numeric price — returns '—' if value is null/undefined/NaN */
+const fmtPrice = (val: number | null | undefined): string => {
+  if (val == null || !isFinite(val)) return '—';
+  return val.toLocaleString();
+};
+
 export const ActivePositionCards: React.FC<Props> = ({ positions, onSelectPosition, isLiveUpdates = false }) => {
   return (
     <section className="space-y-3">
@@ -43,7 +49,9 @@ export const ActivePositionCards: React.FC<Props> = ({ positions, onSelectPositi
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
           {positions.map((position) => {
-            const pnlPositive = position.unrealizedPnl >= 0;
+            const pnl = position.unrealizedPnl ?? 0;
+            const pnlPct = position.pnlPercentage ?? 0;
+            const pnlPositive = pnl >= 0;
             return (
               <button
                 key={position.id}
@@ -59,36 +67,45 @@ export const ActivePositionCards: React.FC<Props> = ({ positions, onSelectPositi
                         {position.side}
                       </span>
                     </div>
-                    <div className="mt-1 text-[11px] font-mono text-slate-500">Leverage {position.leverage}x • Qty {position.quantity}</div>
+                    <div className="mt-1 text-[11px] font-mono text-slate-500">
+                      Leverage {position.leverage ?? '—'}x • Qty {position.quantity ?? '—'}
+                    </div>
                   </div>
                   <div className={`text-right font-mono ${pnlPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    <div className="text-base font-bold">{formatCurrency(position.unrealizedPnl, { showSign: true })}</div>
-                    <div className="text-[11px]">{formatPercentage(position.pnlPercentage, { showSign: true })}</div>
+                    <div className="text-base font-bold">{formatCurrency(pnl, { showSign: true })}</div>
+                    <div className="text-[11px]">{formatPercentage(pnlPct, { showSign: true })}</div>
                   </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs font-mono">
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-slate-500">Entry</div>
-                    <div className="mt-1 text-slate-200">${position.entry.toLocaleString()}</div>
+                    <div className="mt-1 text-slate-200">${fmtPrice(position.entry)}</div>
                   </div>
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-slate-500">Current</div>
-                    <div className="mt-1 text-slate-200">${position.current.toLocaleString()}</div>
+                    <div className="mt-1 text-slate-200">${fmtPrice(position.current)}</div>
                   </div>
                   <div>
-                    <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500"><Crosshair size={10}/>SL</div>
-                    <div className="mt-1 text-rose-300">${position.sl.toLocaleString()}</div>
+                    <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500">
+                      <Crosshair size={10} />SL
+                    </div>
+                    <div className="mt-1 text-rose-300">${fmtPrice(position.sl)}</div>
                   </div>
                   <div>
-                    <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500"><Target size={10}/>TP</div>
-                    <div className="mt-1 text-emerald-300">${position.tp.toLocaleString()}</div>
+                    <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500">
+                      <Target size={10} />TP
+                    </div>
+                    <div className="mt-1 text-emerald-300">${fmtPrice(position.tp)}</div>
                   </div>
                 </div>
 
                 <div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-3 text-[11px] font-mono text-slate-500">
-                  <span className="flex items-center gap-1"><Clock3 size={11}/>{position.duration || position.openedTime}</span>
-                  <span>{position.currentR}</span>
+                  <span className="flex items-center gap-1">
+                    <Clock3 size={11} />
+                    {position.duration || position.openedTime || '—'}
+                  </span>
+                  <span>{position.currentR ?? ''}</span>
                 </div>
               </button>
             );

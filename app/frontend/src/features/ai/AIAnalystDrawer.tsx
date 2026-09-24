@@ -1,3 +1,4 @@
+﻿import ReactMarkdown from 'react-markdown';
 import React, { useEffect, useState, useRef } from 'react';
 import { BrainCircuit, ShieldCheck, Sparkles, X, Send, Loader2, MessageSquare } from 'lucide-react';
 import { getAIStatus, requestAIAnalysis, AIStatus } from '../../api/ai';
@@ -38,7 +39,7 @@ export const AIAnalystDrawer: React.FC<AIAnalystDrawerProps> = ({ isOpen, onClos
     try {
       const [scannerStatus, scannerCandidates, scannerWatchlist, botRuntime] = await Promise.all([
         fetchScannerStatus().catch(() => null),
-        fetchScannerCandidates().catch(() => []),
+        fetchScannerCandidates().catch(() => null),
         fetchScannerWatchlist().catch(() => null),
         apiClient.get('/bot/runtime').catch(() => null)
       ]);
@@ -127,7 +128,7 @@ export const AIAnalystDrawer: React.FC<AIAnalystDrawerProps> = ({ isOpen, onClos
                       ? 'bg-slate-800/80 text-slate-200 border border-slate-700' 
                       : 'bg-violet-950/20 text-slate-300 border border-violet-900/30 whitespace-pre-wrap'
                   }`}>
-                    {msg.content}
+                    {msg.role === 'ai' ? <ReactMarkdown>{msg.content}</ReactMarkdown> : msg.content}
                   </div>
                 </div>
               ))}
@@ -181,3 +182,6 @@ export const AIAnalystDrawer: React.FC<AIAnalystDrawerProps> = ({ isOpen, onClos
     </>
   );
 };
+
+
+

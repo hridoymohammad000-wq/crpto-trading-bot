@@ -1,4 +1,4 @@
-"""Pure EMA/RSI/ADX momentum strategy.
+﻿"""Pure EMA/RSI/ADX momentum strategy.
 
 History requirements are 28 closed 5m candles (ADX14 is the limiting indicator)
 and 22 closed 15m candles (current and previous seeded EMA21 values). Average
@@ -124,7 +124,7 @@ class EmaRsiAdxMomentumStrategy:
         ema_fast, ema_slow, rsi_value, adx_value, volume, average_volume, htf_fast, htf_slow, htf_previous = values
         assert all(value is not None for value in values)
         reasons: list[NoSignalReason] = []
-        if snapshot.crossover_age_candles > 1:
+        if snapshot.crossover_age_candles > 3:
             reasons.append(NoSignalReason.ENTRY_WINDOW_EXPIRED)
 
         if snapshot.side == SignalSide.BUY:
@@ -204,7 +204,7 @@ class EmaRsiAdxMomentumStrategy:
             return None
         cross_index, side = latest_cross
         age = len(entry) - 1 - cross_index
-        if age > 1:
+        if age > 3:
             return None
         return StrategySnapshot(
             symbol=symbol,
@@ -311,3 +311,7 @@ class EmaRsiAdxMomentumStrategy:
             indicators=snapshot.indicators,
             crossover_age_candles=snapshot.crossover_age_candles,
         )
+
+
+
+
