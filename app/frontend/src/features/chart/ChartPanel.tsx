@@ -9,6 +9,7 @@ import { ChartPanelSkeleton } from '../../components/LoadingSkeleton';
 import { SymbolSelector } from '../../components/SymbolSelector';
 import { TimeframeSelector } from '../../components/TimeframeSelector';
 import { useCandles } from '../../hooks/useCandles';
+import { useWatchlistSymbols } from '../../hooks/useWatchlistSymbols';
 import { Position, Signal, SymbolTickerInfo, Timeframe, TradingSymbol } from '../../types';
 import { formatPrice } from '../../utils/formatters';
 import { LightweightCandlestickChart } from './LightweightCandlestickChart';
@@ -38,6 +39,9 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
   isLoading = false,
   className = '',
 }) => {
+  // Fetch available symbols for the selector
+  const availableSymbols = useWatchlistSymbols();
+
   // Use isolated candle hook accessing frontend data layer
   const {
     candles,
@@ -70,18 +74,20 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
       {/* Chart Panel Header Controls */}
       <div className="px-3 py-2.5 bg-slate-950/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
         {/* Symbol Selector and Ticker Info */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 overflow-x-auto custom-scrollbar">
           {/* Reusable Symbol Selector */}
           <SymbolSelector
             selectedSymbol={selectedSymbol}
             onSelectSymbol={onSelectSymbol}
+            symbols={availableSymbols}
           />
 
           {/* Realtime Ticker Summary */}
-          <div className="flex items-center gap-2.5 pl-1 sm:pl-2 text-xs font-mono">
+          <div className="flex items-center gap-2.5 pl-1 sm:pl-2 text-xs font-mono whitespace-nowrap">
             <span
               id="chart-price-display"
               className={`text-sm sm:text-base font-bold flex items-center gap-1.5 ${
+
                 isPositive ? 'text-emerald-400' : 'text-rose-400'
               }`}
             >

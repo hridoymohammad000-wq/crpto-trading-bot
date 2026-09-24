@@ -1,7 +1,6 @@
 import React from 'react';
 import { Bell, X } from 'lucide-react';
 import { ChartPanel } from '../features/chart/ChartPanel';
-import { EquityCurveCard } from '../features/performance/EquityCurveCard';
 import { Header } from '../components/Header';
 import { PerformanceCards } from '../components/PerformanceCards';
 import { PositionDetailModal } from '../components/PositionDetailModal';
@@ -123,13 +122,13 @@ export const DashboardPage: React.FC = () => {
                     isLivePrice={liveWs.connectionState === 'Connected'}
                   />
                 </div>
-                <div className="min-w-0 xl:col-span-4 space-y-4">
-                  <EquityCurveCard points={performanceData.data?.equityCurve} metrics={performanceData.data?.metrics} isLoading={performanceData.isLoading}/>
+                <div className="min-w-0 xl:col-span-4">
                   <SignalFeed signals={displayedSignals} isLoading={signalsData.isLoading} isError={signalsData.isError} errorMessage={signalsData.errorMessage} isLiveStream={liveWs.connectionState === 'Connected'} onRetry={signalsData.refetch}/>
                 </div>
               </div>
             </div>
           )}
+
 
           {currentTab === 'Scanner' && <ScannerPage />}
 
