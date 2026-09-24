@@ -39,11 +39,13 @@ export const ReconciliationAlerts: React.FC<ReconciliationAlertsProps> = ({ reco
     };
   }, []);
 
-  const hasReconErrors = reconData.isError || (reconData.data && reconData.data.status !== 'SYNCED');
+  // Only show this specific alert for actual reconciliation mismatches, not generic network/fetch errors.
+  // Network connectivity issues are handled globally by the StaleDataBanner.
+  const hasMismatches = reconData.data && reconData.data.status !== 'SYNCED';
   const mismatches: string[] = reconData.data?.mismatches || [];
   const hasStuckSymbols = stuckSymbols.length > 0;
 
-  if (!hasReconErrors && !hasStuckSymbols) {
+  if (!hasMismatches && !hasStuckSymbols) {
     return null; // Nothing to report
   }
 
@@ -65,11 +67,7 @@ export const ReconciliationAlerts: React.FC<ReconciliationAlertsProps> = ({ reco
           </h3>
           
           <div className="mt-2 space-y-3">
-            {reconData.isError && (
-              <p className="text-rose-200/90 text-xs">{reconData.errorMessage || "Failed to fetch reconciliation state."}</p>
-            )}
-
-            {reconData.data && reconData.data.status !== 'SYNCED' && (
+            {hasMismatches && (
               <div className="space-y-1 text-xs">
                 <p className="text-rose-300 font-medium">Backend Status: <span className="text-rose-200">{reconData.data.status}</span></p>
                 {mismatches.length > 0 ? (
