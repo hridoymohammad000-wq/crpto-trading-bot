@@ -10,6 +10,9 @@ export const ScannerPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [countdown, setCountdown] = useState(60);
+  const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
+
   const loadData = async () => {
     setIsLoading(true);
     setError(null);
@@ -22,6 +25,8 @@ export const ScannerPage: React.FC = () => {
       setStatus(statusData);
       setUniverse(candidatesData); // Re-use the universe state for candidates
       setWatchlist(watchlistData);
+      setLastScanTime(new Date());
+      setCountdown(60);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load scanner data");
     } finally {
@@ -31,9 +36,28 @@ export const ScannerPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 15000);
-    return () => clearInterval(interval);
+  }, []); // Initial load
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          loadData();
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
+
+  const getRelativeTime = (date: Date | null): string => {
+    if (!date) return 'Never';
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ago`;
+  };
 
   return (
     <div className="space-y-4">
@@ -44,13 +68,20 @@ export const ScannerPage: React.FC = () => {
             {status ? `Showing ${universe.length} monitored candidates from ${status.eligible_count} eligible markets` : "Dynamic universe and watchlist evaluation"}
           </p>
         </div>
-        <button
-          onClick={loadData}
-          disabled={isLoading}
-          className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-        </button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 text-sm text-slate-400 font-mono">
+            <span>Last scan: {getRelativeTime(lastScanTime)}</span>
+            <span className="text-yellow-400">Next scan in: {countdown}s</span>
+            {isLoading && <span className="animate-pulse text-blue-400">● Scanning...</span>}
+          </div>
+          <button
+            onClick={loadData}
+            disabled={isLoading}
+            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
       {error && (
