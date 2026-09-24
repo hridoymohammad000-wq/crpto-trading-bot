@@ -85,15 +85,27 @@ export function useCandles({
   }, [fetchCandles]);
 
   // Determine active trade levels (SL, TP, Entry) from open positions for this symbol
+  // Fallback to the most recent signal for this symbol if no active position exists
   const activePosition = positions.find((p) => p.symbol === symbol);
-  const activeLevels: ActiveTradeLevels | null = activePosition
-    ? {
-        entryPrice: activePosition.entry,
-        stopLoss: activePosition.sl,
-        takeProfit: activePosition.tp,
-        side: activePosition.side,
-      }
-    : null;
+  const latestSignal = !activePosition ? signals.find((s) => s.symbol === symbol) : null;
+
+  let activeLevels: ActiveTradeLevels | null = null;
+  if (activePosition) {
+    activeLevels = {
+      entryPrice: activePosition.entry ?? undefined,
+      stopLoss: activePosition.sl ?? undefined,
+      takeProfit: activePosition.tp ?? undefined,
+      side: activePosition.side,
+    };
+  } else if (latestSignal) {
+    activeLevels = {
+      entryPrice: latestSignal.entry ?? undefined,
+      stopLoss: latestSignal.sl ?? undefined,
+      takeProfit: latestSignal.tp ?? undefined,
+      side: latestSignal.side === 'BUY' ? 'LONG' : 'SHORT',
+    };
+  }
+
 
   return {
     candles,
