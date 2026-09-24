@@ -93,11 +93,14 @@ export function useDashboard() {
         if (pos.symbol === sym) {
           hasChange = true;
           const currentPrice = payload.price;
+          const entry = pos.entry || 0;
+          const qty = pos.quantity || 0;
+          if (!entry || !qty) return { ...pos, current: currentPrice };
           const isLong = pos.side === 'LONG';
           const pnl = isLong
-            ? (currentPrice - pos.entry) * pos.quantity
-            : (pos.entry - currentPrice) * pos.quantity;
-          const pnlPct = (pnl / (pos.entry * pos.quantity)) * 100 * (pos.leverage || 1);
+            ? (currentPrice - entry) * qty
+            : (entry - currentPrice) * qty;
+          const pnlPct = (pnl / (entry * qty)) * 100 * (pos.leverage || 1);
           return {
             ...pos,
             current: currentPrice,
@@ -109,6 +112,7 @@ export function useDashboard() {
       });
       return hasChange ? updated : prevPositions;
     });
+
 
     // Also store the live price for ticking REST-loaded positions
     setLivePrices((prev) => ({ ...prev, [sym]: payload.price }));
@@ -241,11 +245,14 @@ export function useDashboard() {
   const displayedPositions: Position[] = mergedPositions.map((pos) => {
     const livePrice = livePrices[pos.symbol];
     if (livePrice === undefined || livePrice === pos.current) return pos;
+    const entry = pos.entry || 0;
+    const qty = pos.quantity || 0;
+    if (!entry || !qty) return { ...pos, current: livePrice };
     const isLong = pos.side === 'LONG';
     const pnl = isLong
-      ? (livePrice - pos.entry) * pos.quantity
-      : (pos.entry - livePrice) * pos.quantity;
-    const pnlPct = (pnl / (pos.entry * pos.quantity)) * 100 * (pos.leverage || 1);
+      ? (livePrice - entry) * qty
+      : (entry - livePrice) * qty;
+    const pnlPct = (pnl / (entry * qty)) * 100 * (pos.leverage || 1);
     return {
       ...pos,
       current: livePrice,
@@ -253,6 +260,7 @@ export function useDashboard() {
       pnlPercentage: Math.round(pnlPct * 100) / 100,
     };
   });
+
 
   // Signals feed: merges WebSocket signals on top of REST signals
   const combinedSignals: Signal[] = wsSignals.length > 0

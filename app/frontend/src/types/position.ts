@@ -6,17 +6,17 @@ export interface Position {
   id: string;
   symbol: TradingSymbol;
   side: PositionSide;
-  entry: number;
-  current: number;
-  quantity: number;
-  positionValue: number;
-  sl: number;
-  tp: number;
-  unrealizedPnl: number;
-  pnlPercentage: number;
-  currentR: string; // e.g. "+1.04R"
-  duration: string;
-  leverage: number;
-  riskAmount: number;
-  openedTime: string;
+  entry: number | null | undefined;
+  current: number | null | undefined;
+  quantity: number | null | undefined;
+  positionValue: number | null | undefined;
+  sl: number | null | undefined;
+  tp: number | null | undefined;
+  unrealizedPnl: number | null | undefined;
+  pnlPercentage: number | null | undefined;
+  currentR: string | null | undefined;
+  duration: string | null | undefined;
+  leverage: number | null | undefined;
+  riskAmount: number | null | undefined;
+  openedTime: string | null | undefined;
 }

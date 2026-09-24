@@ -9,7 +9,7 @@ export function formatCurrency(
     currencySymbol?: string;
   }
 ): string {
-  if (value === null || value === undefined) return 'Unavailable';
+  if (value === null || value === undefined || !isFinite(value)) return '—';
   
   const decimals = options?.decimals ?? 2;
   const showSign = options?.showSign ?? false;
@@ -35,7 +35,7 @@ export function formatPercentage(
     showSign?: boolean;
   }
 ): string {
-  if (value === null || value === undefined) return 'Unavailable';
+  if (value === null || value === undefined || !isFinite(value)) return '—';
 
   const decimals = options?.decimals ?? 2;
   const showSign = options?.showSign ?? false;
@@ -43,6 +43,7 @@ export function formatPercentage(
   const sign = showSign && value > 0 ? '+' : '';
   return `${sign}${value.toFixed(decimals)}%`;
 }
+
 
 /**
  * Format cryptocurrency prices cleanly
