@@ -109,22 +109,17 @@ export const DashboardPage: React.FC = () => {
           {currentTab === 'Dashboard' && (
             <div className="space-y-4">
               <PerformanceCards metrics={metrics} isLoading={performanceData.isLoading} isError={performanceData.isError} errorMessage={performanceData.errorMessage} onRetry={performanceData.refetch}/>
-              <div className="grid min-w-0 grid-cols-1 xl:grid-cols-12 gap-4 items-start">
-                <div className="min-w-0 xl:col-span-8">
-                  <ChartPanel
-                    selectedSymbol={selectedSymbol}
-                    onSelectSymbol={setSelectedSymbol}
-                    selectedTimeframe={selectedTimeframe}
-                    onSelectTimeframe={setSelectedTimeframe}
-                    positions={displayedPositions}
-                    signals={displayedSignals}
-                    tickerData={liveTickerData}
-                    isLivePrice={liveWs.connectionState === 'Connected'}
-                  />
-                </div>
-                <div className="min-w-0 xl:col-span-4">
-                  <SignalFeed signals={displayedSignals} isLoading={signalsData.isLoading} isError={signalsData.isError} errorMessage={signalsData.errorMessage} isLiveStream={liveWs.connectionState === 'Connected'} onRetry={signalsData.refetch}/>
-                </div>
+              <div className="w-full min-w-0">
+                <ChartPanel
+                  selectedSymbol={selectedSymbol}
+                  onSelectSymbol={setSelectedSymbol}
+                  selectedTimeframe={selectedTimeframe}
+                  onSelectTimeframe={setSelectedTimeframe}
+                  positions={displayedPositions}
+                  signals={displayedSignals}
+                  tickerData={liveTickerData}
+                  isLivePrice={liveWs.connectionState === 'Connected'}
+                />
               </div>
             </div>
           )}
