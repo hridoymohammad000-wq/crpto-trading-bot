@@ -43,7 +43,7 @@ function buildQueryString(params?: Record<string, string | number | boolean | un
  * Central HTTP client using native fetch with timeouts, error mapping, and typing
  */
 export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { timeoutMs = 10000, params, headers, ...customOptions } = options;
+  const { timeoutMs = 60000, params, headers, ...customOptions } = options;
 
   if (!API_BASE_URL) {
     throw new ApiClientError(

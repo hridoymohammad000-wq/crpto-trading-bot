@@ -64,8 +64,8 @@ export function useBotBackend(): UseBotBackendReturn {
     setIsStatusLoading(true);
     try {
       const [health, statusRes] = await Promise.all([
-        getHealth({ timeoutMs: 5000 }),
-        getStatus({ timeoutMs: 5000 }),
+        getHealth({ timeoutMs: 60000 }),
+        getStatus({ timeoutMs: 60000 }),
       ]);
       if (!isMountedRef.current) return;
 
@@ -120,7 +120,7 @@ export function useBotBackend(): UseBotBackendReturn {
 
     try {
       if (shouldStart) {
-        const response = await startBot({ timeoutMs: 10000 });
+        const response = await startBot({ timeoutMs: 60000 });
 
         if (!isMountedRef.current) return;
 
@@ -128,7 +128,7 @@ export function useBotBackend(): UseBotBackendReturn {
         setConnectionStatus('Connected');
         setSuccessMessage('Trading bot started successfully.');
       } else {
-        const response = await stopBot({ timeoutMs: 10000 });
+        const response = await stopBot({ timeoutMs: 60000 });
 
         if (!isMountedRef.current) return;
 
@@ -139,7 +139,7 @@ export function useBotBackend(): UseBotBackendReturn {
 
       // Re-synchronize full status in background
       try {
-        const refreshed = await getStatus({ timeoutMs: 4000 });
+        const refreshed = await getStatus({ timeoutMs: 60000 });
         if (isMountedRef.current && refreshed) {
           setBackendDetails(refreshed);
           setBotStatus(normalizeBotStatus(refreshed.bot_status));
