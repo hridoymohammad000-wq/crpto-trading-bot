@@ -124,7 +124,7 @@ class EmaRsiAdxMomentumStrategy:
         ema_fast, ema_slow, rsi_value, adx_value, volume, average_volume, htf_fast, htf_slow, htf_previous = values
         assert all(value is not None for value in values)
         reasons: list[NoSignalReason] = []
-        if snapshot.crossover_age_candles > 3:
+        if snapshot.crossover_age_candles > 5:
             reasons.append(NoSignalReason.ENTRY_WINDOW_EXPIRED)
 
         if snapshot.side == SignalSide.BUY:
@@ -190,8 +190,15 @@ class EmaRsiAdxMomentumStrategy:
             return None
         cross_index, side = latest_cross
         age = len(entry) - 1 - cross_index
-        if age > 3:
+        if age > 5:
             return None
+            
+        # Check trend structure
+        if side == SignalSide.BUY and not EmaRsiAdxMomentumStrategy._has_bullish_structure(entry):
+            return None
+        if side == SignalSide.SELL and not EmaRsiAdxMomentumStrategy._has_bearish_structure(entry):
+            return None
+            
         return StrategySnapshot(
             symbol=symbol,
             current_candle=entry[-1],
@@ -201,6 +208,32 @@ class EmaRsiAdxMomentumStrategy:
             side=side,
             indicators=self._current_indicators(entry, trend),
         )
+
+    @staticmethod
+    def _has_bullish_structure(entry: tuple[Candle, ...], lookback: int = 6) -> bool:
+        """Check for HH/HL pattern in last N candles."""
+        if len(entry) < lookback:
+            return False
+        recent = entry[-lookback:]
+        highs = [c.high for c in recent]
+        lows = [c.low for c in recent]
+        # At least one HH and one HL in the recent candles
+        hh = any(highs[i] > highs[i-1] for i in range(1, len(highs)))
+        hl = any(lows[i] > lows[i-1] for i in range(1, len(lows)))
+        return hh and hl
+
+    @staticmethod
+    def _has_bearish_structure(entry: tuple[Candle, ...], lookback: int = 6) -> bool:
+        """Check for LL/LH pattern in last N candles."""
+        if len(entry) < lookback:
+            return False
+        recent = entry[-lookback:]
+        highs = [c.high for c in recent]
+        lows = [c.low for c in recent]
+        # At least one LL and one LH in the recent candles
+        ll = any(lows[i] < lows[i-1] for i in range(1, len(lows)))
+        lh = any(highs[i] < highs[i-1] for i in range(1, len(highs)))
+        return ll and lh
 
     @staticmethod
     def _closed_for(

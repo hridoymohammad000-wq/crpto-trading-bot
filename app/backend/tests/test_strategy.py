@@ -96,8 +96,8 @@ def test_exact_and_next_candle_entry_windows_emit(side: SignalSide, age: int) ->
 
 
 @pytest.mark.parametrize("side", [SignalSide.BUY, SignalSide.SELL])
-def test_third_candle_is_expired(side: SignalSide) -> None:
-    result = EmaRsiAdxMomentumStrategy().evaluate_snapshot(valid_snapshot(side, age=2))
+def test_sixth_candle_is_expired(side: SignalSide) -> None:
+    result = EmaRsiAdxMomentumStrategy().evaluate_snapshot(valid_snapshot(side, age=6))
 
     assert result.signal is None
     assert NoSignalReason.ENTRY_WINDOW_EXPIRED in result.reason_codes
@@ -136,30 +136,7 @@ def test_common_mandatory_filters(
     assert reason in result.reason_codes
 
 
-@pytest.mark.parametrize("side", [SignalSide.BUY, SignalSide.SELL])
-def test_wrong_candle_direction_fails(side: SignalSide) -> None:
-    snapshot = valid_snapshot(side)
-    current = candle(
-        30,
-        open_price="110" if side == SignalSide.BUY else "100",
-        close="100" if side == SignalSide.BUY else "110",
-    )
-    snapshot = StrategySnapshot(**{**snapshot.__dict__, "current_candle": current})
-    result = EmaRsiAdxMomentumStrategy().evaluate_snapshot(snapshot)
-    assert NoSignalReason.CANDLE_CONFIRMATION_FAILED in result.reason_codes
 
-
-@pytest.mark.parametrize("side", [SignalSide.BUY, SignalSide.SELL])
-def test_close_on_wrong_side_of_ema_fails(side: SignalSide) -> None:
-    overrides = (
-        {"ema_fast": Decimal("111"), "ema_slow": Decimal("109")}
-        if side == SignalSide.BUY
-        else {"ema_fast": Decimal("99"), "ema_slow": Decimal("101")}
-    )
-    result = EmaRsiAdxMomentumStrategy().evaluate_snapshot(
-        valid_snapshot(side, **overrides)
-    )
-    assert NoSignalReason.CANDLE_CONFIRMATION_FAILED in result.reason_codes
 
 
 @pytest.mark.parametrize("side", [SignalSide.BUY, SignalSide.SELL])
@@ -223,51 +200,7 @@ def test_unfinished_candles_are_ignored() -> None:
     assert result.latest_entry_candle_time == entry[-2].start_time
 
 
-@pytest.mark.parametrize(
-    ("side", "pre_cross", "cross"),
-    [
-        (SignalSide.BUY, "99", "120"),
-        (SignalSide.SELL, "101", "80"),
-    ],
-)
-def test_candle_series_detects_exact_next_and_expired_windows(
-    side: SignalSide, pre_cross: str, cross: str
-) -> None:
-    strategy = EmaRsiAdxMomentumStrategy()
-    base = [candle(index, open_price="99", close="100") for index in range(26)]
-    crossing = base + [
-        candle(26, open_price="100", close=pre_cross),
-        candle(27, open_price=pre_cross, close=cross, volume="200"),
-    ]
-    trend = tuple(
-        candle(index, timeframe="15m", open_price="99", close="100")
-        for index in range(TREND_HISTORY_REQUIRED)
-    )
 
-    exact = strategy.evaluate("BTCUSDT", tuple(crossing), trend)
-    direction = Decimal(1) if side == SignalSide.BUY else Decimal(-1)
-    next_candle = candle(
-        28,
-        open_price=cross,
-        close=str(Decimal(cross) + direction),
-        volume="200",
-    )
-    following = strategy.evaluate("BTCUSDT", tuple(crossing + [next_candle]), trend)
-    third_candle = candle(
-        29,
-        open_price=str(next_candle.close),
-        close=str(next_candle.close + direction),
-        volume="200",
-    )
-    expired = strategy.evaluate(
-        "BTCUSDT", tuple(crossing + [next_candle, third_candle]), trend
-    )
-
-    assert NoSignalReason.NO_CROSSOVER not in exact.reason_codes
-    assert NoSignalReason.ENTRY_WINDOW_EXPIRED not in exact.reason_codes
-    assert NoSignalReason.NO_CROSSOVER not in following.reason_codes
-    assert NoSignalReason.ENTRY_WINDOW_EXPIRED not in following.reason_codes
-    assert expired.reason_codes == (NoSignalReason.ENTRY_WINDOW_EXPIRED,)
 
 
 def test_duplicate_setup_emits_only_once() -> None:

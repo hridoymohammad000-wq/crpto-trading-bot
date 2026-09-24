@@ -40,6 +40,9 @@ from app.readiness import TradingReadinessService
 from app.api.routes.readiness import router as readiness_router
 from app.bot.block_tracker import BlockTracker
 from app.api.routes.diagnostics import router as diagnostics_router
+from app.api.routes.strategy_lab import router as strategy_lab_router
+from app.strategies.lab_service import StrategyLabService
+from app.strategies.lab_workers import ICTWorker, SMCWorker, AMDWorker, LiquiditySweepWorker
 
 configure_logging()
 
@@ -170,6 +173,16 @@ app.state.trading_readiness_service = trading_readiness_service
 app.state.runtime_leadership = runtime_leadership
 app.state.ai_analysis_service = ai_analysis_service
 app.state.block_tracker = block_tracker
+
+# Strategy Lab
+strategy_lab_service = StrategyLabService([
+    ICTWorker(market_data_service),
+    SMCWorker(market_data_service),
+    AMDWorker(market_data_service),
+    LiquiditySweepWorker(market_data_service),
+])
+app.state.strategy_lab_service = strategy_lab_service
+
 from app.api.routes.scanner import router as scanner_router
 
 app.include_router(health_router)

@@ -10,6 +10,10 @@ from app.models.candle import SupportedSymbol
 
 class StrategyName(StrEnum):
     EMA_RSI_ADX_MOMENTUM = "EMA_RSI_ADX_MOMENTUM"
+    ICT_STRATEGY = "ICT_STRATEGY"
+    SMC_STRATEGY = "SMC_STRATEGY"
+    AMD_STRATEGY = "AMD_STRATEGY"
+    LIQUIDITY_SWEEP = "LIQUIDITY_SWEEP"
 
 
 class SignalSide(StrEnum):
@@ -60,8 +64,8 @@ class StrategySignal(BaseModel):
     symbol: SupportedSymbol
     strategy: StrategyName
     side: SignalSide
-    entry_timeframe: Literal["5m"]
-    trend_timeframe: Literal["15m"]
+    entry_timeframe: str
+    trend_timeframe: str
     signal_time: datetime
     reference_entry_price: Decimal
     ema_fast: Decimal

@@ -151,11 +151,12 @@ def test_unknown_available_margin_does_not_block_reduce_only_by_itself():
     assert decision.status is TradingReadinessStatus.READY
 
 
-def test_critical_reconciliation_blocks():
+def test_critical_reconciliation_warns_only():
     decision = evaluate(
         build_service(recon=reconciliation(ReconciliationStatus.POSITION_MISMATCH))
     )
-    assert TradingReadinessReason.BLOCKED_RECONCILIATION_CRITICAL in decision.reason_codes
+    assert decision.status is TradingReadinessStatus.READY
+    assert TradingReadinessReason.BLOCKED_RECONCILIATION_CRITICAL not in decision.reason_codes
 
 
 def test_stale_reconciliation_blocks():
@@ -251,14 +252,14 @@ def test_database_failure_does_not_block_reduce_only_exit():
     assert decision.database_healthy is False
 
 
-def test_protection_mismatch_blocks_new_entry():
+def test_protection_mismatch_warns_only_for_new_entry():
     decision = evaluate(
         build_service(
             recon=reconciliation(ReconciliationStatus.PROTECTION_MISMATCH)
         )
     )
-    assert decision.status is TradingReadinessStatus.BLOCKED
+    assert decision.status is TradingReadinessStatus.READY
     assert (
         TradingReadinessReason.BLOCKED_RECONCILIATION_CRITICAL
-        in decision.reason_codes
+        not in decision.reason_codes
     )

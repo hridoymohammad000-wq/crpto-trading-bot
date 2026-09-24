@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 SupportedSymbol = str
-SupportedTimeframe = Literal["1m", "5m", "15m"]
+SupportedTimeframe = Literal["1m", "5m", "15m", "1H"]
 
 
 class Candle(BaseModel):
