@@ -264,10 +264,20 @@ class BotRuntime:
         finally:
             self._last_heartbeat = datetime.now(timezone.utc)
 
+    def _get_submitted_signal_ids(self) -> set[str]:
+        res = None
+        if self._persistence:
+            res = self._persistence.submitted_signal_ids()
+        elif self._activity_repository:
+            res = self._activity_repository.submitted_signal_ids()
+        return res if isinstance(res, set) else set()
+
     async def _run_cycle(self) -> None:
         from app.scanner.models import SetupState, SymbolState
         from app.scanner.state_machine import PipelineStateMachine
         from app.core.config import settings
+
+        self._submitted_signal_ids.update(self._get_submitted_signal_ids())
 
         self._cycle_in_progress = True
         self._last_cycle_start_time = datetime.now(timezone.utc)
@@ -344,7 +354,7 @@ class BotRuntime:
 
         if self._scanner_engine and self._execution_service:
             try:
-                positions = await _timed_await("get_positions", self._execution_service._exchange.get_positions(), 15.0)
+                positions = await _timed_await("get_positions", self._execution_service.get_positions(), 15.0)
                 self._scanner_engine.watchlist.open_position_symbols = {p.symbol for p in positions if p.size > 0}
             except Exception as exc:
                 logger.warning("Failed to fetch positions during cycle (non-fatal): %s: %s", type(exc).__name__, exc)
@@ -376,13 +386,6 @@ class BotRuntime:
                     # state through it so STATIC vs SCANNER permissions stay authoritative.
                     state = self._scanner_engine.get_or_create_state(symbol)
                         
-                    # Handle COOLDOWN transitions
-                    if state.state == SetupState.COOLDOWN:
-                        cooldown_until = self._scanner_engine.watchlist.cooldown_symbols.get(symbol)
-                        if cooldown_until and datetime.now(timezone.utc) >= cooldown_until:
-                            state.state = SetupState.DISCOVERED
-                            del self._scanner_engine.watchlist.cooldown_symbols[symbol]
-                            
                     # Refresh permission after cooldown/state transitions without
                     # overwriting ScannerEngine's SCANNER-mode decision with the
                     # global static allowlist.
@@ -429,9 +432,6 @@ class BotRuntime:
                                     PipelineStateMachine.arm_strategy_authority_trigger(state)
                                 else:
                                     state.execution_diagnostics["execution_status"] = "BLOCKED_BY_EXECUTION_ALLOWLIST"
-                            
-                        if state.state == SetupState.ARMED and new_1m:
-                            PipelineStateMachine.evaluate_1m_trigger(state, c_1m)
                         
                     is_triggered = state.state == SetupState.TRIGGERED
                     signal = state.trigger_1m.get("signal")
@@ -542,7 +542,7 @@ class BotRuntime:
                                 "signal": {
                                     "id": signal.signal_id,
                                     "symbol": signal.symbol,
-                                    "strategy": "EMA + RSI",
+                                    "strategy": signal.strategy,
                                     "side": signal.side.value,
                                     "timeframe": signal.entry_timeframe,
                                     "entry": float(signal.reference_entry_price),

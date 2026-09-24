@@ -5,7 +5,7 @@ from decimal import Decimal
 from app.market_data.service import MarketDataService
 from app.scanner.models import MarketRegime, ScannerOpportunity, SetupState, SymbolState, WatchlistState
 from app.scanner.state_machine import PipelineStateMachine
-from app.strategies.indicators import adx, ema, moving_average
+from app.strategies.indicators import adx, ema, moving_average, rsi
 
 
 class ScannerEngine:
@@ -87,13 +87,22 @@ class ScannerEngine:
                 state = self.get_or_create_state(t.symbol)
                 return ScannerOpportunity(t.symbol, t.last_price, spread, turnover, t.volume_24h or Decimal(0), None, None, None, MarketRegime.UNKNOWN, None, 0, 0, state.state, ("INSUFFICIENT_HISTORY",))
             closes = tuple(c.close for c in candles); highs=tuple(c.high for c in candles); lows=tuple(c.low for c in candles); volumes=tuple(c.volume for c in candles)
-            fast=ema(closes,9)[-1]; slow=ema(closes,21)[-1]; adx_val=adx(highs,lows,closes,14)[-1]; avg=moving_average(volumes,20)[-1]
+            fast=ema(closes,9)[-1]; slow=ema(closes,21)[-1]; adx_val=adx(highs,lows,closes,14)[-1]; avg=moving_average(volumes,20)[-1]; rsi_val=rsi(closes,14)[-1]
             trs=[]
             for i in range(1,len(candles)):
                 trs.append(max(candles[i].high-candles[i].low, abs(candles[i].high-candles[i-1].close), abs(candles[i].low-candles[i-1].close)))
             atr=sum(trs[-14:])/Decimal(len(trs[-14:])) if trs else Decimal(0)
             atr_pct=(atr/closes[-1]*Decimal(100)) if closes[-1]>0 else Decimal(0)
             rvol=(volumes[-1]/avg) if avg and avg>0 else Decimal(0)
+            
+            # RSI confirmation logic
+            rsi_score = 0
+            if rsi_val is not None:
+                if fast is not None and slow is not None and fast > slow and rsi_val > Decimal(50):
+                    rsi_score = 15
+                elif fast is not None and slow is not None and fast < slow and rsi_val < Decimal(50):
+                    rsi_score = 15
+
             if atr_pct > Decimal("2.5"): regime=MarketRegime.HIGH_VOLATILITY
             elif adx_val is not None and adx_val < Decimal("20"): regime=MarketRegime.RANGING
             elif fast is not None and slow is not None and fast>slow and closes[-1]>fast and adx_val is not None and adx_val>=Decimal("20"): regime=MarketRegime.TRENDING_UP
@@ -103,7 +112,10 @@ class ScannerEngine:
             turnover_score=min(50, int(turnover/Decimal("10000000")))
             spread_score=50 if spread < Decimal("0.02") else max(0,50-int(spread*1000))
             market_score=min(100,turnover_score+spread_score)
-            setup_score=(min(40,int(adx_val)) if adx_val else 0)+(min(30,int(rvol*10)) if rvol else 0)+(30 if regime in {MarketRegime.TRENDING_UP,MarketRegime.TRENDING_DOWN} else 0)
+            
+            # Incorporate RSI into setup_score
+            base_setup = (min(40,int(adx_val)) if adx_val else 0)+(min(30,int(rvol*10)) if rvol else 0)+(30 if regime in {MarketRegime.TRENDING_UP,MarketRegime.TRENDING_DOWN} else 0)
+            setup_score = min(100, base_setup + rsi_score)
             state=self.get_or_create_state(t.symbol); state.regime=regime; state.bias=bias; state.market_quality_score=market_score; state.setup_quality_score=setup_score; state.spread_pct=spread; state.atr_pct=atr_pct
             return ScannerOpportunity(t.symbol,t.last_price,spread,turnover,t.volume_24h or Decimal(0),atr_pct,rvol,adx_val,regime,bias,market_score,setup_score,state.state,tuple(reasons))
 

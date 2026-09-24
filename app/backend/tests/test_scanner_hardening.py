@@ -137,20 +137,6 @@ def test_open_15m_candle_cannot_reach_context_evaluator():
         spy.assert_not_called()
 
 
-def test_scanner_1m_open_candle_cannot_trigger():
-    st = SymbolState(symbol="ETHUSDT", state=SetupState.ARMED, execution_allowed=False)
-    st.trigger_1m["signal"] = signal("ETHUSDT")
-    assert PipelineStateMachine.evaluate_1m_trigger(st, (Candle(symbol="ETHUSDT", timeframe="1m", start_time=NOW, open=Decimal("100"), high=Decimal("105"), low=Decimal("98"), close=Decimal("104"), volume=Decimal("100"), turnover=Decimal("10000"), is_closed=False),)) is False
-    assert st.state is SetupState.ARMED
-
-
-def test_scanner_1m_closed_candle_is_diagnostic_only_not_invented_trigger():
-    st = SymbolState(symbol="ETHUSDT", state=SetupState.ARMED, execution_allowed=False)
-    st.trigger_1m["signal"] = signal("ETHUSDT")
-    row = Candle(symbol="ETHUSDT", timeframe="1m", start_time=NOW, open=Decimal("100"), high=Decimal("105"), low=Decimal("98"), close=Decimal("104"), volume=Decimal("100"), turnover=Decimal("10000"), is_closed=True)
-    assert PipelineStateMachine.evaluate_1m_trigger(st, (row,)) is False
-    assert st.state is SetupState.ARMED
-    assert st.trigger_1m["trigger_reason"] == "PENDING_PROPER_1M_TRIGGER_RULE_APPROVAL"
 
 
 def test_non_allowlisted_symbol_never_executes_even_when_risk_ready():
@@ -162,7 +148,7 @@ def test_non_allowlisted_symbol_never_executes_even_when_risk_ready():
     risk.evaluate.assert_not_called()
     execution.execute.assert_not_called()
     st = sc.get_or_create_state("ETHUSDT")
-    assert "PENDING_1M_TRIGGER_RULE" in st.reason_codes
+    assert "SETUP_VALID" in st.reason_codes
 
 
 def test_risk_rejection_prevents_execution_on_allowlisted_symbol():

@@ -13,7 +13,7 @@ async def test_runtime_timeout_behavior():
     execution_service._exchange = Mock()
     activity_repository = Mock()
     
-    execution_service._exchange.get_positions = AsyncMock()
+    execution_service.get_positions = AsyncMock()
     scanner_engine.refresh_universe = AsyncMock()
     
     runtime = BotRuntime(

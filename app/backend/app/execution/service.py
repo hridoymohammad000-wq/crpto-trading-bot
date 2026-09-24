@@ -325,6 +325,10 @@ class ExecutionService:
             }
         )
 
+    async def get_positions(self) -> list[dict]:
+        """Fetch open positions from the exchange."""
+        return await self._exchange.get_positions()
+
     def _persist(self, result: ExecutionResult) -> None:
         if self._persistence is not None:
             self._persistence.record_execution(result)

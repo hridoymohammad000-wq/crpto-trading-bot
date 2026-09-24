@@ -48,8 +48,8 @@ market_data_service = MarketDataService(exchange_client)
 strategy_service = StrategyService(market_data_service)
 scanner_engine = ScannerEngine(
     market_data_service,
-    min_turnover=float(settings.SCANNER_MIN_TURNOVER_24H),
-    max_spread_pct=float(settings.SCANNER_MAX_SPREAD_PCT),
+    min_turnover=Decimal(str(settings.SCANNER_MIN_TURNOVER_24H)),
+    max_spread_pct=Decimal(str(settings.SCANNER_MAX_SPREAD_PCT)),
     dynamic_limit=settings.SCANNER_DYNAMIC_LIMIT,
     cooldown_minutes=settings.SCANNER_COOLDOWN_MINUTES,
     execution_allowlist=settings.execution_symbol_allowlist,

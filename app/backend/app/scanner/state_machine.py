@@ -127,25 +127,6 @@ class PipelineStateMachine:
     def arm_btc_authority_trigger(state: SymbolState) -> bool:
         return PipelineStateMachine.arm_strategy_authority_trigger(state)
 
-    @staticmethod
-    def evaluate_1m_trigger(state: SymbolState, candles_1m: tuple[Candle, ...]) -> bool:
-        """Scanner-symbol 1m trigger remains blocked until a rule is explicitly approved."""
-        if state.state != SetupState.ARMED or state.execution_allowed:
-            return False
-        closed = tuple(c for c in candles_1m if c.is_closed)
-        if not closed:
-            return False
-        latest = closed[-1]
-        if not PipelineStateMachine.should_process(state, "1m", latest):
-            return False
-        PipelineStateMachine.mark_processed(state, "1m", latest)
-        state.trigger_1m.update({
-            "trigger_status": False,
-            "latest_closed_candle": latest.start_time.isoformat(),
-            "trigger_reason": "PENDING_PROPER_1M_TRIGGER_RULE_APPROVAL",
-        })
-        state.reason_codes = ["PENDING_1M_TRIGGER_RULE"]
-        return False
 
     @staticmethod
     def mark_executed(state: SymbolState, order_id: str | None) -> None:

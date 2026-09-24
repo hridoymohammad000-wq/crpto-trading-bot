@@ -37,3 +37,7 @@ step9_preflight.py
 run_playwright.py
 NEON_DEPLOY.txt
 REPLACE_INSTRUCTIONS.txt
+
+# Backups
+*.backup
+*.bak*
