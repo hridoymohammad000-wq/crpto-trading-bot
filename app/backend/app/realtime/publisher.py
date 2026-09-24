@@ -101,7 +101,7 @@ class LiveSnapshotPublisher:
                     "balance": _num(account.balance),
                     "equity": _num(account.equity),
                     "availableBalance": _num(account.available_balance),
-                    "dailyPnl": _num(account.unrealized_pnl),
+                    "dailyPnl": _num(account.unrealized_pnl) if account.unrealized_pnl is not None else 0.0,
                 },
             )
         except Exception as exc:

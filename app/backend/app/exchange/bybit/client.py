@@ -18,7 +18,7 @@ from app.exchange.bybit.exceptions import BybitAPIError, BybitConnectionError
 from app.models.candle import Candle
 
 BYBIT_DEMO_REST_URL = "https://api-demo.bybit.com"
-DEFAULT_HTTP_TIMEOUT_SECONDS = 10.0
+DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
 MIN_KLINE_LIMIT = 1
 MAX_KLINE_LIMIT = 1000
 CORE_SYMBOLS = frozenset({"BTCUSDT", "ETHUSDT", "SOLUSDT"})
