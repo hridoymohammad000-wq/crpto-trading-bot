@@ -48,13 +48,14 @@ export const ActivePositionCards: React.FC<Props> = ({ positions, onSelectPositi
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-          {positions.map((position) => {
+          {positions.map((position, index) => {
             const pnl = position.unrealizedPnl ?? 0;
             const pnlPct = position.pnlPercentage ?? 0;
             const pnlPositive = pnl >= 0;
+            const safeKey = position.id || `${position.symbol}-${position.side}-${index}`;
             return (
               <button
-                key={position.id}
+                key={safeKey}
                 type="button"
                 onClick={() => onSelectPosition?.(position)}
                 className="rounded-md border border-slate-800 bg-slate-900/80 p-4 text-left transition hover:border-slate-700 hover:bg-slate-900"
