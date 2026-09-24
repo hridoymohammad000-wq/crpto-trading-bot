@@ -264,20 +264,10 @@ class BotRuntime:
         finally:
             self._last_heartbeat = datetime.now(timezone.utc)
 
-    def _get_submitted_signal_ids(self) -> set[str]:
-        res = None
-        if self._persistence:
-            res = self._persistence.submitted_signal_ids()
-        elif self._activity_repository:
-            res = self._activity_repository.submitted_signal_ids()
-        return res if isinstance(res, set) else set()
-
     async def _run_cycle(self) -> None:
         from app.scanner.models import SetupState, SymbolState
         from app.scanner.state_machine import PipelineStateMachine
         from app.core.config import settings
-
-        self._submitted_signal_ids.update(self._get_submitted_signal_ids())
 
         self._cycle_in_progress = True
         self._last_cycle_start_time = datetime.now(timezone.utc)
@@ -344,7 +334,7 @@ class BotRuntime:
 
                 if refresh_due:
                     self._last_universe_refresh_attempt = cycle_time
-                    await _timed_await("refresh_universe", self._scanner_engine.refresh_universe(), 45.0)
+                    await _timed_await("refresh_universe", self._scanner_engine.refresh_universe(), 150.0)
 
             except Exception as exc:
                 logger.warning(
