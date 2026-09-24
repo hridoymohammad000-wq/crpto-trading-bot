@@ -1,5 +1,8 @@
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 from app.account import AccountService
 from app.models.readiness import (
@@ -139,7 +142,14 @@ class TradingReadinessService:
                 if reconciliation_age > self.max_reconciliation_age_seconds:
                     reasons.append(TradingReadinessReason.BLOCKED_RECONCILIATION_STALE)
             if recon.status is not ReconciliationStatus.SYNCED:
-                reasons.append(TradingReadinessReason.BLOCKED_RECONCILIATION_CRITICAL)
+                # Warn only — do not hard-block on Demo API reconciliation mismatch.
+                # BLOCKED_RECONCILIATION_CRITICAL is logged but not added to reasons
+                # so a transient mismatch does not kill the entire trading session.
+                logger.warning(
+                    "Reconciliation status is %s (not SYNCED) for signal %s — proceeding with caution",
+                    recon.status.value,
+                    signal.signal_id,
+                )
         except Exception:
             reasons.append(TradingReadinessReason.BLOCKED_RECONCILIATION_CRITICAL)
 

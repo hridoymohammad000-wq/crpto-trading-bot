@@ -21,6 +21,7 @@ from app.bot.leadership import RuntimeLeadership, RuntimeLeadershipError
 logger = logging.getLogger(__name__)
 
 from app.scanner.engine import ScannerEngine
+from app.bot.block_tracker import BlockTracker
 
 DEFAULT_SYMBOLS: tuple[SupportedSymbol, ...] = ("BTCUSDT",)
 
@@ -47,6 +48,7 @@ class BotRuntime:
         reconciliation_engine: Any | None = None,
         trading_readiness_service: TradingReadinessService | None = None,
         runtime_leadership: RuntimeLeadership | None = None,
+        block_tracker: BlockTracker | None = None,
         state: BotState = bot_state,
         symbols: Sequence[SupportedSymbol] = DEFAULT_SYMBOLS,
         poll_interval_seconds: float = 15.0,
@@ -67,10 +69,12 @@ class BotRuntime:
         self._reconciliation_engine = reconciliation_engine
         self._trading_readiness_service = trading_readiness_service
         self._runtime_leadership = runtime_leadership
+        self._block_tracker = block_tracker
         self._state = state
         self._symbols = tuple(symbols)
         self._poll_interval_seconds = poll_interval_seconds
         self._task: asyncio.Task[None] | None = None
+        self._refresh_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._lock = asyncio.Lock()
         self._started_at: datetime | None = None
@@ -334,7 +338,22 @@ class BotRuntime:
 
                 if refresh_due:
                     self._last_universe_refresh_attempt = cycle_time
-                    await _timed_await("refresh_universe", self._scanner_engine.refresh_universe(), 150.0)
+                    if self._refresh_task is None or self._refresh_task.done():
+                        self._refresh_task = asyncio.create_task(
+                            _timed_await(
+                                "refresh_universe",
+                                self._scanner_engine.refresh_universe(),
+                                150.0,
+                            ),
+                            name="scanner-universe-refresh",
+                        )
+                        self._refresh_task.add_done_callback(
+                            lambda t: logger.warning(
+                                "Scanner universe refresh failed: %s", t.exception()
+                            )
+                            if t.exception()
+                            else None
+                        )
 
             except Exception as exc:
                 logger.warning(
@@ -472,6 +491,14 @@ class BotRuntime:
                                             ]
                                             state.execution_diagnostics["execution_status"] = "BLOCKED_BY_TRADING_READINESS"
                                             state.execution_diagnostics["readiness_reasons"] = state.reason_codes
+                                        if self._block_tracker:
+                                            asyncio.ensure_future(
+                                                self._block_tracker.record_block(
+                                                    [r.value for r in readiness_decision.reason_codes],
+                                                    symbol=symbol,
+                                                    signal_id=signal.signal_id if signal else "",
+                                                )
+                                            )
                                 elif self._reconciliation_engine and not self._reconciliation_engine.is_safe():
                                     if self._scanner_engine:
                                         state.state = SetupState.INVALIDATED
@@ -498,6 +525,10 @@ class BotRuntime:
                                             PipelineStateMachine.mark_executed(state, execution_result.order_id)
                                             self._scanner_engine.enter_cooldown(symbol)
                                             state.execution_diagnostics["execution_status"] = execution_result.status.value
+                                        if self._block_tracker:
+                                            asyncio.ensure_future(
+                                                self._block_tracker.record_execution(symbol=symbol)
+                                            )
                                     elif execution_result.status.value == "UNKNOWN_RECONCILING":
                                         self._submitted_signal_ids.add(signal.signal_id)
                                         if self._scanner_engine:
@@ -516,6 +547,14 @@ class BotRuntime:
                             if self._scanner_engine:
                                 state.state = SetupState.INVALIDATED
                                 state.reason_codes = ["RISK_REJECTED"]
+                            if self._block_tracker and risk_decision:
+                                asyncio.ensure_future(
+                                    self._block_tracker.record_risk_reject(
+                                        risk_decision.reason.value if risk_decision.reason else "UNKNOWN",
+                                        symbol=symbol,
+                                        signal_id=signal.signal_id if signal else "",
+                                    )
+                                )
                             
                     if signal and self._activity_repository is not None:
                         self._activity_repository.record_signal(

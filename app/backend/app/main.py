@@ -38,6 +38,8 @@ from app.scanner.engine import ScannerEngine
 from app.reconciliation import ReconciliationEngine
 from app.readiness import TradingReadinessService
 from app.api.routes.readiness import router as readiness_router
+from app.bot.block_tracker import BlockTracker
+from app.api.routes.diagnostics import router as diagnostics_router
 
 configure_logging()
 
@@ -94,6 +96,8 @@ runtime_leadership = RuntimeLeadership(
     )
 )
 
+block_tracker = BlockTracker()
+
 trading_readiness_service = TradingReadinessService(
     account_service=account_service,
     reconciliation_engine=reconciliation_engine,
@@ -115,6 +119,7 @@ bot_runtime = BotRuntime(
     reconciliation_engine=reconciliation_engine,
     trading_readiness_service=trading_readiness_service,
     runtime_leadership=runtime_leadership,
+    block_tracker=block_tracker,
     poll_interval_seconds=settings.BOT_POLL_INTERVAL_SECONDS,
 )
 live_snapshot_publisher = LiveSnapshotPublisher(
@@ -131,9 +136,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     persistence_database.initialize()
     await live_snapshot_publisher.start()
     await reconciliation_engine.reconcile()
+    await block_tracker.start_daily_summary_loop()
     yield
     await live_snapshot_publisher.stop()
     await bot_runtime.shutdown()
+    await block_tracker.stop()
     await exchange_client.disconnect()
 
 
@@ -161,6 +168,7 @@ app.state.reconciliation_engine = reconciliation_engine
 app.state.trading_readiness_service = trading_readiness_service
 app.state.runtime_leadership = runtime_leadership
 app.state.ai_analysis_service = ai_analysis_service
+app.state.block_tracker = block_tracker
 from app.api.routes.scanner import router as scanner_router
 
 app.include_router(health_router)
@@ -177,3 +185,4 @@ app.include_router(activity_router)
 app.include_router(bot_router)
 app.include_router(integrations_router)
 app.include_router(ai_router)
+app.include_router(diagnostics_router)
