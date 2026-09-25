@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 from app.scanner.engine import ScannerEngine
 from app.bot.block_tracker import BlockTracker
+from app.notifications.telegram import send_telegram_message
 
 DEFAULT_SYMBOLS: tuple[SupportedSymbol, ...] = ("BTCUSDT",)
 
@@ -584,6 +585,25 @@ class BotRuntime:
                                 }
                             },
                         ), 5.0)
+
+                        # Telegram Notification
+                        tg_msg = (
+                            f"🚨 <b>{signal_status.upper()} SIGNAL</b> 🚨\n"
+                            f"<b>Symbol:</b> {signal.symbol}\n"
+                            f"<b>Strategy:</b> {signal.strategy}\n"
+                            f"<b>Side:</b> {signal.side.value}\n"
+                            f"<b>Entry:</b> {signal.reference_entry_price}\n"
+                        )
+                        if risk_decision and risk_decision.stop_loss:
+                            tg_msg += f"<b>SL:</b> {risk_decision.stop_loss}\n"
+                            tg_msg += f"<b>TP:</b> {risk_decision.take_profit}\n"
+                        
+                        if execution_result:
+                            tg_msg += f"\n<b>Execution:</b> {execution_result.status.value}\n"
+                            tg_msg += f"<b>Message:</b> {execution_result.message}\n"
+                            
+                        asyncio.ensure_future(send_telegram_message(tg_msg))
+
                         if execution_result:
                             await _timed_await("publish_event", self._publish(
                                 "system_event",
