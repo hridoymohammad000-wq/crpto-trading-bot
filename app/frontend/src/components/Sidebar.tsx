@@ -55,6 +55,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Performance & Strategy',
       icon: BarChart3,
     },
+    {
+      id: 'Strategy Lab',
+      label: 'Strategy Lab',
+      icon: Activity,
+    },
     { id: 'Settings', label: 'Settings', icon: Sliders },
   ];
 

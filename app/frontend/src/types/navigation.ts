@@ -4,4 +4,5 @@ export type NavigationTab =
   | 'Signals'
   | 'Active Trade & History'
   | 'Performance & Strategy'
+  | 'Strategy Lab'
   | 'Settings';

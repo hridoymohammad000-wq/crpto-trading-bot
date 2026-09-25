@@ -10,6 +10,7 @@ import { SignalFeed } from '../features/signals/SignalFeed';
 import { ScannerPage } from '../features/scanner/ScannerPage';
 import { ActiveTradeHistoryPage } from '../features/trades/ActiveTradeHistoryPage';
 import { PerformanceStrategyPage } from '../features/performance/PerformanceStrategyPage';
+import { StrategyLabPage } from '../features/strategy-lab/StrategyLabPage';
 import { AIAnalystDrawer } from '../features/ai/AIAnalystDrawer';
 import { StaleDataBanner } from '../components/StaleDataBanner';
 import { ReconciliationAlerts } from '../components/ReconciliationAlerts';
@@ -168,6 +169,10 @@ export const DashboardPage: React.FC = () => {
               onRetry={performanceData.refetch}
               onOpenAIAnalyst={() => setIsAIDrawerOpen(true)}
             />
+          )}
+
+          {currentTab === 'Strategy Lab' && (
+            <StrategyLabPage />
           )}
 
           {currentTab === 'Settings' && (
