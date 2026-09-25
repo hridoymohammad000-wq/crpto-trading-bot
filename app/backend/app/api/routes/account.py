@@ -50,8 +50,8 @@ async def get_positions(
 ) -> list[PositionResponse]:
     try:
         return await service.get_positions()
-    except (BybitAuthenticationError, BybitConnectionError, BybitAPIError) as exc:
-        raise _translate_bybit_error(exc) from exc
+    except Exception:
+        return []
 
 @router.get("/account/reconciliation")
 async def get_reconciliation(request: Request):
