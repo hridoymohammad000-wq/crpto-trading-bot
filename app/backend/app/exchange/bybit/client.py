@@ -1,4 +1,4 @@
-﻿from dataclasses import dataclass
+from dataclasses import dataclass
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, DecimalException, ROUND_DOWN, ROUND_UP
@@ -22,11 +22,27 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = 10.0
 MIN_KLINE_LIMIT = 1
 MAX_KLINE_LIMIT = 1000
 CORE_SYMBOLS = frozenset({"BTCUSDT", "ETHUSDT", "SOLUSDT"})
-TIMEFRAME_INTERVALS = {"1m": "1", "5m": "5", "15m": "15"}
+TIMEFRAME_INTERVALS = {
+    "1m": "1",
+    "5m": "5",
+    "15m": "15",
+    "1h": "60",
+    "1H": "60",
+    "4h": "240",
+    "4H": "240",
+    "1d": "D",
+    "1D": "D"
+}
 TIMEFRAME_DURATIONS = {
     "1m": timedelta(minutes=1),
     "5m": timedelta(minutes=5),
     "15m": timedelta(minutes=15),
+    "1h": timedelta(hours=1),
+    "1H": timedelta(hours=1),
+    "4h": timedelta(hours=4),
+    "4H": timedelta(hours=4),
+    "1d": timedelta(days=1),
+    "1D": timedelta(days=1),
 }
 
 
