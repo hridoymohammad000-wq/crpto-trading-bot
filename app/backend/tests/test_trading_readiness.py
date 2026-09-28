@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, Mock
@@ -226,7 +226,7 @@ def test_wrong_account_mode_blocks_entry():
 
 def test_unresolved_execution_blocks_new_entry():
     service = build_service()
-    service._persistence.unresolved_executions.return_value = [object()]
+    service._persistence.unresolved_executions.return_value = [type("Execution", (), {"submitted_at": None})()]
     decision = evaluate(service)
     assert decision.status is TradingReadinessStatus.BLOCKED
     assert (
@@ -263,3 +263,4 @@ def test_protection_mismatch_warns_only_for_new_entry():
         TradingReadinessReason.BLOCKED_RECONCILIATION_CRITICAL
         not in decision.reason_codes
     )
+
