@@ -1,56 +1,87 @@
 from collections.abc import AsyncIterator
-from decimal import Decimal
 from contextlib import asynccontextmanager
+from decimal import Decimal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.account import AccountService
+from app.activity import ActivityService
+from app.ai import AIAnalysisService
 from app.api.routes.account import router as account_router
 from app.api.routes.activity import router as activity_router
-from app.api.routes.bot import router as bot_router
-from app.api.routes.health import router as health_router
-from app.api.routes.market import router as market_router
-from app.api.routes.risk import router as risk_router
-from app.api.routes.realtime import router as realtime_router
 from app.api.routes.ai import router as ai_router
+from app.api.routes.bot import router as bot_router
+from app.api.routes.diagnostics import router as diagnostics_router
+from app.api.routes.health import router as health_router
 from app.api.routes.integrations import router as integrations_router
+from app.api.routes.market import router as market_router
+from app.api.routes.persistence import router as persistence_router
+from app.api.routes.readiness import router as readiness_router
+from app.api.routes.realtime import router as realtime_router
+from app.api.routes.risk import router as risk_router
 from app.api.routes.status import router as status_router
 from app.api.routes.strategy import router as strategy_router
-from app.account import AccountService
-from app.bot.runtime import BotRuntime
+from app.api.routes.strategy_lab import router as strategy_lab_router
+from app.bot.block_tracker import BlockTracker
 from app.bot.leadership import RuntimeLeadership
+from app.bot.runtime import BotRuntime
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.exchange.bybit import BybitDemoClient
-from app.market_data import MarketDataService
-from app.risk import RiskService
 from app.execution import ExecutionService
-from app.strategies import StrategyService
-from app.repositories import ActivityRepository
-from app.activity import ActivityService
+from app.market_data import MarketDataService
+from app.persistence import PersistenceDatabase
+from app.readiness import TradingReadinessService
 from app.realtime import RealtimeHub
 from app.realtime.publisher import LiveSnapshotPublisher
-from app.persistence import PersistenceDatabase
-from app.ai import AIAnalysisService
-from app.api.routes.persistence import router as persistence_router
-
-from app.scanner.engine import ScannerEngine
 from app.reconciliation import ReconciliationEngine
-from app.readiness import TradingReadinessService
-from app.api.routes.readiness import router as readiness_router
-from app.bot.block_tracker import BlockTracker
-from app.api.routes.diagnostics import router as diagnostics_router
-from app.api.routes.strategy_lab import router as strategy_lab_router
+from app.repositories import ActivityRepository
+from app.risk import RiskService
+from app.scanner.engine import ScannerEngine
+from app.strategies import StrategyService
+from app.strategies.lab_repository import StrategyLabRepository
 from app.strategies.lab_service import StrategyLabService
-from app.strategies.lab_workers import ICTWorker, SMCWorker, AMDWorker, LiquiditySweepWorker
+from app.strategies.lab_workers import (
+    AMDWorker,
+    ICTWorker,
+    LiquiditySweepWorker,
+    SMCWorker,
+)
 
 configure_logging()
 
-persistence_database = PersistenceDatabase(settings.DATABASE_PATH, database_url=settings.DATABASE_URL)
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+persistence_database = PersistenceDatabase(
+    settings.DATABASE_PATH,
+    database_url=settings.DATABASE_URL,
+)
 persistence_database.initialize()
+
+
+# ---------------------------------------------------------------------------
+# Exchange + market data
+# ---------------------------------------------------------------------------
+
 exchange_client = BybitDemoClient(settings)
 market_data_service = MarketDataService(exchange_client)
+
+
+# ---------------------------------------------------------------------------
+# Main executable strategy
+# ---------------------------------------------------------------------------
+
 strategy_service = StrategyService(market_data_service)
+
+
+# ---------------------------------------------------------------------------
+# Scanner
+# ---------------------------------------------------------------------------
+
 scanner_engine = ScannerEngine(
     market_data_service,
     min_turnover=Decimal(str(settings.SCANNER_MIN_TURNOVER_24H)),
@@ -60,7 +91,14 @@ scanner_engine = ScannerEngine(
     execution_allowlist=settings.execution_symbol_allowlist,
     execution_selection_mode=settings.EXECUTION_SELECTION_MODE,
 )
+
+
+# ---------------------------------------------------------------------------
+# Account + risk + execution
+# ---------------------------------------------------------------------------
+
 account_service = AccountService(exchange_client)
+
 risk_service = RiskService(
     account_service,
     market_data_service,
@@ -77,15 +115,39 @@ risk_service = RiskService(
     structure_buffer_pct=Decimal(settings.STRUCTURE_BUFFER_PCT),
     persistence=persistence_database,
 )
+
 execution_service = (
-    ExecutionService(exchange_client, persistence_database)
+    ExecutionService(
+        exchange_client,
+        persistence_database,
+    )
     if settings.EXECUTION_ENABLED
     else None
 )
-activity_repository = ActivityRepository(persistence=persistence_database)
+
+
+# ---------------------------------------------------------------------------
+# Activity + realtime + AI
+# ---------------------------------------------------------------------------
+
+activity_repository = ActivityRepository(
+    persistence=persistence_database,
+)
+
 realtime_hub = RealtimeHub()
-activity_service = ActivityService(exchange_client, activity_repository, persistence_database)
+
+activity_service = ActivityService(
+    exchange_client,
+    activity_repository,
+    persistence_database,
+)
+
 ai_analysis_service = AIAnalysisService(settings)
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation
+# ---------------------------------------------------------------------------
 
 reconciliation_engine = ReconciliationEngine(
     account_service=account_service,
@@ -93,13 +155,28 @@ reconciliation_engine = ReconciliationEngine(
     persistence=persistence_database,
 )
 
+
+# ---------------------------------------------------------------------------
+# Runtime leadership
+# ---------------------------------------------------------------------------
+
 runtime_leadership = RuntimeLeadership(
     persistence_database.path.with_name(
         f"{persistence_database.path.name}.runtime.lock"
     )
 )
 
+
+# ---------------------------------------------------------------------------
+# Block tracker
+# ---------------------------------------------------------------------------
+
 block_tracker = BlockTracker()
+
+
+# ---------------------------------------------------------------------------
+# Trading readiness
+# ---------------------------------------------------------------------------
 
 trading_readiness_service = TradingReadinessService(
     account_service=account_service,
@@ -109,6 +186,11 @@ trading_readiness_service = TradingReadinessService(
     max_signal_age_seconds=settings.SIGNAL_MAX_AGE_SECONDS,
     max_reconciliation_age_seconds=settings.RECONCILIATION_MAX_AGE_SECONDS,
 )
+
+
+# ---------------------------------------------------------------------------
+# Main bot runtime
+# ---------------------------------------------------------------------------
 
 bot_runtime = BotRuntime(
     strategy_service,
@@ -125,6 +207,12 @@ bot_runtime = BotRuntime(
     block_tracker=block_tracker,
     poll_interval_seconds=settings.BOT_POLL_INTERVAL_SECONDS,
 )
+
+
+# ---------------------------------------------------------------------------
+# Live snapshot publisher
+# ---------------------------------------------------------------------------
+
 live_snapshot_publisher = LiveSnapshotPublisher(
     realtime_hub,
     market_data_service,
@@ -134,32 +222,59 @@ live_snapshot_publisher = LiveSnapshotPublisher(
 )
 
 
+# ---------------------------------------------------------------------------
+# App lifecycle
+# ---------------------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     persistence_database.initialize()
+
     await live_snapshot_publisher.start()
     await reconciliation_engine.reconcile()
     await block_tracker.start_daily_summary_loop()
+
     yield
+
     await live_snapshot_publisher.stop()
     await bot_runtime.shutdown()
     await block_tracker.stop()
     await exchange_client.disconnect()
 
 
-app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    lifespan=lifespan,
+)
+
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://frontend-ten-omega-25.vercel.app",
         "http://localhost:5173",
-        "http://localhost:3000"
-    ] + settings.cors_origins,
+        "http://localhost:3000",
+    ]
+    + settings.cors_origins,
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Shared application state
+# ---------------------------------------------------------------------------
+
 app.state.market_data_service = market_data_service
 app.state.strategy_service = strategy_service
 app.state.scanner_engine = scanner_engine
@@ -178,14 +293,36 @@ app.state.runtime_leadership = runtime_leadership
 app.state.ai_analysis_service = ai_analysis_service
 app.state.block_tracker = block_tracker
 
+
+# ---------------------------------------------------------------------------
 # Strategy Lab
-strategy_lab_service = StrategyLabService([
-    ICTWorker(market_data_service),
-    SMCWorker(market_data_service),
-    AMDWorker(market_data_service),
-    LiquiditySweepWorker(market_data_service),
-])
+#
+# IMPORTANT:
+# Strategy Lab is paper/research only.
+# It does not use RiskService, ExecutionService, or BotRuntime execution.
+# ---------------------------------------------------------------------------
+
+strategy_lab_repository = StrategyLabRepository(
+    persistence_database,
+)
+
+strategy_lab_service = StrategyLabService(
+    [
+        ICTWorker(market_data_service),
+        SMCWorker(market_data_service),
+        AMDWorker(market_data_service),
+        LiquiditySweepWorker(market_data_service),
+    ],
+    repository=strategy_lab_repository,
+)
+
+app.state.strategy_lab_repository = strategy_lab_repository
 app.state.strategy_lab_service = strategy_lab_service
+
+
+# ---------------------------------------------------------------------------
+# Routers
+# ---------------------------------------------------------------------------
 
 from app.api.routes.scanner import router as scanner_router
 
