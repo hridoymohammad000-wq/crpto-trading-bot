@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timezone
@@ -415,15 +415,12 @@ class BotRuntime:
                     # Fetch candles for tracking
                     raw_15m = await _timed_await(f"fetch_15m_{symbol}", self._strategy_service._market_data.fetch_candles(symbol, "15m", limit=30, closed_only=True), 10.0)
                     raw_5m = await _timed_await(f"fetch_5m_{symbol}", self._strategy_service._market_data.fetch_candles(symbol, "5m", limit=200, closed_only=True), 10.0)
-                    raw_1m = await _timed_await(f"fetch_1m_{symbol}", self._strategy_service._market_data.fetch_candles(symbol, "1m", limit=2, closed_only=True), 10.0)
                     c_15m = tuple(candle for candle in raw_15m if candle.is_closed)
                     c_5m = tuple(candle for candle in raw_5m if candle.is_closed)
-                    c_1m = tuple(candle for candle in raw_1m if candle.is_closed)
                     
                     # Check new candles
                     new_15m = bool(c_15m) and (state.last_processed_15m != c_15m[-1].start_time)
                     new_5m = bool(c_5m) and (state.last_processed_5m != c_5m[-1].start_time)
-                    new_1m = bool(c_1m) and (state.last_processed_1m != c_1m[-1].start_time)
                     
                     # State Machine Pipeline
                     if state.state != SetupState.COOLDOWN:
@@ -435,12 +432,14 @@ class BotRuntime:
                         # an entry evaluation. TRIGGERED is re-evaluated on a later
                         # 5m close so stale setups can be refreshed/invalidated.
                         if c_5m and state.state in (SetupState.WATCHING, SetupState.ARMED, SetupState.TRIGGERED) and new_5m:
-                            evaluation = await _timed_await(f"evaluate_{symbol}", self._strategy_service.evaluate(symbol), 15.0)
+                            evaluation = await _timed_await(f"evaluate_{symbol}", self._strategy_service.evaluate(symbol, entry_candles=c_5m, trend_candles=c_15m), 15.0)
                             PipelineStateMachine.evaluate_5m_setup(state, evaluation)
                             if state.state == SetupState.ARMED:
                                 if state.execution_allowed:
                                     PipelineStateMachine.arm_strategy_authority_trigger(state)
                                 else:
+                                    state.state = SetupState.INVALIDATED
+                                    state.reason_codes = ["BLOCKED_BY_EXECUTION_ALLOWLIST"]
                                     state.execution_diagnostics["execution_status"] = "BLOCKED_BY_EXECUTION_ALLOWLIST"
                         
                     is_triggered = state.state == SetupState.TRIGGERED
@@ -588,7 +587,7 @@ class BotRuntime:
 
                         # Telegram Notification
                         tg_msg = (
-                            f"🚨 <b>{signal_status.upper()} SIGNAL</b> 🚨\n"
+                            f"ðŸš¨ <b>{signal_status.upper()} SIGNAL</b> ðŸš¨\n"
                             f"<b>Symbol:</b> {signal.symbol}\n"
                             f"<b>Strategy:</b> {signal.strategy}\n"
                             f"<b>Side:</b> {signal.side.value}\n"
@@ -653,3 +652,6 @@ class BotRuntime:
     @staticmethod
     def _iso(value: datetime | None) -> str | None:
         return value.isoformat() if value is not None else None
+
+
+

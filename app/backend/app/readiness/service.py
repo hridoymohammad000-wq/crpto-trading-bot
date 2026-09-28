@@ -1,5 +1,5 @@
-import logging
-from datetime import datetime, timezone
+﻿import logging
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -142,11 +142,11 @@ class TradingReadinessService:
                 if reconciliation_age > self.max_reconciliation_age_seconds:
                     reasons.append(TradingReadinessReason.BLOCKED_RECONCILIATION_STALE)
             if recon.status is not ReconciliationStatus.SYNCED:
-                # Warn only — do not hard-block on Demo API reconciliation mismatch.
+                # Warn only â€” do not hard-block on Demo API reconciliation mismatch.
                 # BLOCKED_RECONCILIATION_CRITICAL is logged but not added to reasons
                 # so a transient mismatch does not kill the entire trading session.
                 logger.warning(
-                    "Reconciliation status is %s (not SYNCED) for signal %s — proceeding with caution",
+                    "Reconciliation status is %s (not SYNCED) for signal %s â€” proceeding with caution",
                     recon.status.value,
                     signal.signal_id,
                 )
@@ -159,10 +159,18 @@ class TradingReadinessService:
                 health.get("status") == "ok"
                 and health.get("writable") is True
             )
-            if not reduce_only and self._persistence.unresolved_executions():
-                reasons.append(
-                    TradingReadinessReason.BLOCKED_UNRESOLVED_EXECUTION
-                )
+            unresolved = self._persistence.unresolved_executions()
+            if not reduce_only and unresolved:
+                cutoff = now - timedelta(minutes=30)
+                recent_unresolved = [
+                    e
+                    for e in unresolved
+                    if e.submitted_at is None or e.submitted_at >= cutoff
+                ]
+                if recent_unresolved:
+                    reasons.append(
+                        TradingReadinessReason.BLOCKED_UNRESOLVED_EXECUTION
+                    )
         except Exception:
             database_healthy = False
 
@@ -197,3 +205,5 @@ class TradingReadinessService:
         )
         self._last_decision = decision
         return decision
+
+

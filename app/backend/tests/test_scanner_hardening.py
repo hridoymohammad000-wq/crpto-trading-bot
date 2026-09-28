@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, Mock, patch
@@ -148,7 +148,8 @@ def test_non_allowlisted_symbol_never_executes_even_when_risk_ready():
     risk.evaluate.assert_not_called()
     execution.execute.assert_not_called()
     st = sc.get_or_create_state("ETHUSDT")
-    assert "SETUP_VALID" in st.reason_codes
+    assert st.state is SetupState.INVALIDATED
+    assert st.reason_codes == ["BLOCKED_BY_EXECUTION_ALLOWLIST"]
 
 
 def test_risk_rejection_prevents_execution_on_allowlisted_symbol():
@@ -186,3 +187,5 @@ def test_watchlist_refresh_preserves_active_state():
 def test_scanner_has_no_execution_dependency():
     sc = scanner()
     assert not hasattr(sc, "_execution_service")
+
+

@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+﻿from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     WS_LIVE_TOKEN: str = "demo-bot-control-token"
     BOT_POLL_INTERVAL_SECONDS: float = 15.0
     SIGNAL_MAX_AGE_SECONDS: float = 900.0
-    RECONCILIATION_MAX_AGE_SECONDS: float = 120.0
+    RECONCILIATION_MAX_AGE_SECONDS: float = 300.0
     RISK_PER_TRADE_PCT: str = "1"
     DAILY_LOSS_LIMIT_PCT: str = "3"
     MINIMUM_RR: str = "2"
@@ -71,3 +71,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
