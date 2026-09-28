@@ -59,13 +59,27 @@ export const ScannerPage: React.FC = () => {
     return `${minutes}m ago`;
   };
 
+  const visibleUniverse = [...universe]
+    .filter((candidate) =>
+      Number(candidate.market_quality_score) >= 60 &&
+      Number(candidate.setup_quality_score) >= 60
+    )
+    .sort((a, b) => {
+      const aMin = Math.min(Number(a.market_quality_score) || 0, Number(a.setup_quality_score) || 0);
+      const bMin = Math.min(Number(b.market_quality_score) || 0, Number(b.setup_quality_score) || 0);
+      if (bMin !== aMin) return bMin - aMin;
+      return (Number(b.market_quality_score) + Number(b.setup_quality_score)) -
+        (Number(a.market_quality_score) + Number(a.setup_quality_score));
+    })
+    .slice(0, 10);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between pb-2 border-b border-slate-800">
         <div>
           <h2 className="text-base font-semibold font-mono text-slate-100">Opportunity Scanner</h2>
           <p className="text-xs text-slate-400 font-mono">
-            {status ? `Showing ${universe.length} monitored candidates from ${status.eligible_count} eligible markets` : "Dynamic universe and watchlist evaluation"}
+            {status ? `Showing Top ${visibleUniverse.length} qualified candidates (M/S ≥ 60) from ${status.eligible_count} eligible markets` : "Dynamic universe and watchlist evaluation"}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -148,7 +162,7 @@ export const ScannerPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {universe.slice(0, 50).map((o) => {
+              {visibleUniverse.map((o) => {
                 const isMonitored = watchlist?.core_symbols?.includes(o.symbol) || watchlist?.dynamic_symbols?.includes(o.symbol);
                 const sState = watchlist?.symbol_states?.[o.symbol] || {};
                 
@@ -192,7 +206,7 @@ export const ScannerPage: React.FC = () => {
                   </tr>
                 );
               })}
-              {universe.length === 0 && !isLoading && (
+              {visibleUniverse.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={12} className="px-3 py-4 text-center text-slate-500">
                     No universe data available

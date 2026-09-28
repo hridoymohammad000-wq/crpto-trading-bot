@@ -149,7 +149,12 @@ class PersistenceDatabase:
             order_id TEXT,
             created_at TEXT,
             updated_at TEXT,
-            synced_at TEXT NOT NULL
+            synced_at TEXT NOT NULL,
+            strategy TEXT,
+            stop_loss TEXT,
+            take_profit TEXT,
+            exit_reason TEXT,
+            diagnostic_reason TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_closed_trades_updated_at
@@ -177,6 +182,7 @@ class PersistenceDatabase:
         with self._schema_lock, self._connect() as conn:
             conn.executescript(self._schema_sql())
             self._ensure_execution_columns(conn)
+            self._ensure_closed_trade_columns(conn)
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_intent_id "
                 "ON execution_submissions(execution_intent_id) "
@@ -262,6 +268,31 @@ class PersistenceDatabase:
             "writable": True,
             "checked_at": checked_at,
         }
+
+    def _ensure_closed_trade_columns(self, conn: Any) -> None:
+        if self.database_url:
+            rows = conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'closed_trades'
+                """
+            ).fetchall()
+            existing = {str(row["column_name"]) for row in rows}
+        else:
+            rows = conn.execute("PRAGMA table_info(closed_trades)").fetchall()
+            existing = {str(row[1]) for row in rows}
+
+        additions = {
+            "strategy": "TEXT",
+            "stop_loss": "TEXT",
+            "take_profit": "TEXT",
+            "exit_reason": "TEXT",
+            "diagnostic_reason": "TEXT",
+        }
+        for column, column_type in additions.items():
+            if column not in existing:
+                conn.execute(f"ALTER TABLE closed_trades ADD COLUMN {column} {column_type}")
 
     def upsert_signal(
         self,
@@ -535,6 +566,13 @@ class PersistenceDatabase:
                 )
 
     def list_closed_trades(self, limit: int = 100) -> list[ClosedTradeResponse]:
+        """Return persisted closed trades enriched with the closest durable entry intent.
+
+        Bybit closed-PnL does not expose a reliable human-readable close reason.
+        We therefore only label SL/TP when the exit price is consistent with a
+        recorded protection level; otherwise the ledger explicitly says that the
+        cause is not available instead of inventing one.
+        """
         self.initialize()
         with self._connect() as conn:
             rows = conn.execute(
@@ -545,22 +583,139 @@ class PersistenceDatabase:
                 """,
                 (limit,),
             ).fetchall()
-        return [
-            ClosedTradeResponse(
-                symbol=row["symbol"],
-                side=row["side"],
-                quantity=Decimal(row["quantity"]),
-                entry_price=Decimal(row["entry_price"]) if row["entry_price"] is not None else None,
-                exit_price=Decimal(row["exit_price"]) if row["exit_price"] is not None else None,
-                realized_pnl=Decimal(row["realized_pnl"]),
-                open_fee=Decimal(row["open_fee"]) if row["open_fee"] is not None else None,
-                close_fee=Decimal(row["close_fee"]) if row["close_fee"] is not None else None,
-                order_id=row["order_id"],
-                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
-                updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
-            )
-            for row in rows
-        ]
+
+            output: list[ClosedTradeResponse] = []
+            for row in rows:
+                closed_at = row["updated_at"] or row["created_at"] or row["synced_at"]
+                execution = None
+
+                # First try the exchange order id. If Bybit's closed-PnL order id is
+                # the closing order rather than our entry order, fall back to the
+                # nearest earlier execution for the same symbol and quantity.
+                if row["order_id"]:
+                    execution = conn.execute(
+                        """
+                        SELECT e.*, s.strategy
+                        FROM execution_submissions e
+                        LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
+                        WHERE e.order_id=?
+                        ORDER BY e.submitted_at DESC
+                        LIMIT 1
+                        """,
+                        (row["order_id"],),
+                    ).fetchone()
+
+                if execution is None:
+                    execution = conn.execute(
+                        """
+                        SELECT e.*, s.strategy
+                        FROM execution_submissions e
+                        LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
+                        WHERE e.symbol=?
+                          AND e.quantity=?
+                          AND e.submitted_at<=?
+                        ORDER BY e.submitted_at DESC
+                        LIMIT 1
+                        """,
+                        (row["symbol"], row["quantity"], closed_at),
+                    ).fetchone()
+
+                stop_loss = (
+                    Decimal(execution["stop_loss"])
+                    if execution is not None and execution["stop_loss"] is not None
+                    else None
+                )
+                take_profit = (
+                    Decimal(execution["take_profit"])
+                    if execution is not None and execution["take_profit"] is not None
+                    else None
+                )
+                exit_price = Decimal(row["exit_price"]) if row["exit_price"] is not None else None
+                realized_pnl = Decimal(row["realized_pnl"])
+                side = str(row["side"])
+
+                exit_reason: str
+                diagnostic_reason: str
+                tolerance = Decimal("0.003")  # 0.3% allows normal stop/market slippage.
+
+                def _near(a: Decimal | None, b: Decimal | None) -> bool:
+                    if a is None or b is None or b == 0:
+                        return False
+                    return abs(a - b) / abs(b) <= tolerance
+
+                if realized_pnl < 0 and _near(exit_price, stop_loss):
+                    exit_reason = "LIKELY_SL_HIT"
+                    diagnostic_reason = (
+                        "Exit price matched the configured stop-loss within 0.3%. "
+                        "This identifies the exit mechanism; entry-regime root cause "
+                        "is only available for trades that persisted diagnostic context."
+                    )
+                elif realized_pnl > 0 and _near(exit_price, take_profit):
+                    exit_reason = "LIKELY_TP_HIT"
+                    diagnostic_reason = "Exit price matched the configured take-profit within 0.3%."
+                elif realized_pnl < 0:
+                    exit_reason = "LOSS_EXIT"
+                    diagnostic_reason = (
+                        "Closed at a loss, but the persisted data does not prove an SL hit. "
+                        "Manual/other exchange exits cannot be distinguished for this trade."
+                    )
+                elif realized_pnl > 0:
+                    exit_reason = "PROFIT_EXIT"
+                    diagnostic_reason = (
+                        "Closed in profit; persisted data does not prove that the configured TP caused the exit."
+                    )
+                else:
+                    exit_reason = "BREAKEVEN"
+                    diagnostic_reason = "Trade closed approximately flat."
+
+                # Persist the attribution so the trade ledger keeps the reason
+                # across restarts. Existing values are refreshed only from the
+                # same deterministic correlation logic.
+                strategy = (str(execution["strategy"]) if execution is not None and execution["strategy"] else row["strategy"])
+                if execution is None and row["exit_reason"]:
+                    exit_reason = str(row["exit_reason"])
+                    diagnostic_reason = str(row["diagnostic_reason"] or diagnostic_reason)
+                    stop_loss = Decimal(row["stop_loss"]) if row["stop_loss"] is not None else stop_loss
+                    take_profit = Decimal(row["take_profit"]) if row["take_profit"] is not None else take_profit
+
+                conn.execute(
+                    """
+                    UPDATE closed_trades
+                    SET strategy=?, stop_loss=?, take_profit=?, exit_reason=?, diagnostic_reason=?
+                    WHERE trade_key=?
+                    """,
+                    (
+                        strategy,
+                        str(stop_loss) if stop_loss is not None else None,
+                        str(take_profit) if take_profit is not None else None,
+                        exit_reason,
+                        diagnostic_reason,
+                        row["trade_key"],
+                    ),
+                )
+
+                output.append(
+                    ClosedTradeResponse(
+                        symbol=row["symbol"],
+                        side=side,
+                        quantity=Decimal(row["quantity"]),
+                        entry_price=Decimal(row["entry_price"]) if row["entry_price"] is not None else None,
+                        exit_price=exit_price,
+                        realized_pnl=realized_pnl,
+                        open_fee=Decimal(row["open_fee"]) if row["open_fee"] is not None else None,
+                        close_fee=Decimal(row["close_fee"]) if row["close_fee"] is not None else None,
+                        order_id=row["order_id"],
+                        created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
+                        updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
+                        strategy=strategy,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                        exit_reason=exit_reason,
+                        diagnostic_reason=diagnostic_reason,
+                    )
+                )
+
+        return output
 
     def get_daily_baseline(self, trading_day: date) -> Decimal | None:
         self.initialize()

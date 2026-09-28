@@ -269,8 +269,7 @@ export function useDashboard() {
   const displayedSignals: Signal[] = combinedSignals;
 
   // Account balances: WebSocket delta > Reconciliation data > REST /account.
-  // Daily PnL strictly comes from account delta or /account — never from unrealized_pnl.
-  const realBalance = liveAccountDelta?.balance !== undefined
+    const realBalance = liveAccountDelta?.balance !== undefined
     ? liveAccountDelta.balance
     : reconData.data?.wallet?.balance !== undefined
     ? reconData.data.wallet.balance
@@ -291,13 +290,27 @@ export function useDashboard() {
     : (accountData.data as any)?.available_balance !== undefined
     ? (accountData.data as any).available_balance
     : accountData.data?.availableBalance;
-  // Daily PnL: WS account_update delta first, then REST /account — never fall back to unrealized_pnl
-  const realDailyPnl = liveAccountDelta?.dailyPnl !== undefined
-    ? liveAccountDelta.dailyPnl
-    : accountData.data?.dailyPnl;
-  const realDailyPnlPercentage = liveAccountDelta?.dailyPnlPercentage !== undefined
-    ? liveAccountDelta.dailyPnlPercentage
-    : accountData.data?.dailyPnlPercentage;
+  // Daily PnL is REALIZED closed-trade PnL for the browser's current calendar day.
+  // Do not use equity-wallet difference / unrealized PnL here; that was the old mismatch.
+  const today = new Date();
+  const isSameLocalDay = (value?: string) => {
+    if (!value) return false;
+    const date = new Date(value);
+    return !Number.isNaN(date.getTime()) &&
+      date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate();
+  };
+  const realizedToday = tradesData.allTrades
+    .filter((trade) => isSameLocalDay(trade.closedAtISO))
+    .reduce((sum, trade) => sum + (Number.isFinite(trade.pnl) ? trade.pnl : 0), 0);
+  const realDailyPnl = tradesData.isLoading && tradesData.allTrades.length === 0
+    ? undefined
+    : Math.round(realizedToday * 100) / 100;
+  const estimatedStartBalance = realBalance !== undefined ? realBalance - realizedToday : undefined;
+  const realDailyPnlPercentage = estimatedStartBalance && estimatedStartBalance !== 0
+    ? (realizedToday / estimatedStartBalance) * 100
+    : undefined;
 
   const accountInfo: AccountSummary = {
     // Explicit offline-safe defaults — no fabricated values

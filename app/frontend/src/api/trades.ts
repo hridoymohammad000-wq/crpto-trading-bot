@@ -12,6 +12,11 @@ interface BackendClosedTrade {
   realized_pnl: number;
   created_at?: string;
   updated_at?: string;
+  strategy?: string | null;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  exit_reason?: string | null;
+  diagnostic_reason?: string | null;
 }
 
 export async function getTrades(options?: RequestOptions): Promise<Trade[]> {
@@ -30,19 +35,21 @@ export async function getTrades(options?: RequestOptions): Promise<Trade[]> {
       id: bt.order_id || Math.random().toString(),
       symbol: bt.symbol,
       side: bt.side,
-      strategy: 'EMA + RSI', // fallback
+      strategy: (bt.strategy || 'EMA + RSI') as any,
       timeframe: '5m', // fallback
       entry: bt.entry_price || 0,
       exit: bt.exit_price || 0,
-      sl: 0,
-      tp: 0,
+      sl: bt.stop_loss || 0,
+      tp: bt.take_profit || 0,
       pnl: bt.realized_pnl,
       pnlPercentage: pnlPercentage,
       rr: '-',
       duration: 'Closed',
       result,
-      closedAt: bt.created_at ? new Date(bt.created_at).toLocaleString() : 'Unknown',
-      closedAtISO: bt.created_at,
+      closedAt: (bt.updated_at || bt.created_at) ? new Date(bt.updated_at || bt.created_at!).toLocaleString() : 'Unknown',
+      closedAtISO: bt.updated_at || bt.created_at,
+      exitReason: bt.exit_reason || undefined,
+      diagnosticReason: bt.diagnostic_reason || undefined,
     };
   });
 }

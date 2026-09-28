@@ -41,6 +41,11 @@ class ClosedTradeResponse(BaseModel):
     order_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    strategy: str | None = None
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
+    exit_reason: str | None = None
+    diagnostic_reason: str | None = None
 
 
 class TradeStatsResponse(BaseModel):

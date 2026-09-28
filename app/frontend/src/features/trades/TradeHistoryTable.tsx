@@ -255,6 +255,8 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
                 <th className="py-2 px-3 font-medium text-right">R:R</th>
                 <th className="py-2 px-3 font-medium text-right">Duration</th>
                 <th className="py-2 px-3 font-medium text-center">Result</th>
+                <th className="py-2 px-3 font-medium">Exit Reason</th>
+                <th className="py-2 px-3 font-medium">Why / Diagnostic</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50 text-slate-300">
@@ -321,6 +323,16 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
 
                     <td className="py-2.5 px-3 text-center whitespace-nowrap">
                       <StatusBadge type="trade-result" value={trade.result} size="xs" />
+                    </td>
+
+                    <td className="py-2.5 px-3 whitespace-nowrap text-[11px]">
+                      <span className={trade.exitReason?.includes('SL') ? 'text-rose-300' : trade.exitReason?.includes('TP') ? 'text-emerald-300' : 'text-slate-400'}>
+                        {trade.exitReason || (trade.result === 'Loss' ? 'LOSS_EXIT' : trade.result === 'Win' ? 'PROFIT_EXIT' : 'BREAKEVEN')}
+                      </span>
+                    </td>
+
+                    <td className="py-2.5 px-3 min-w-[260px] max-w-[360px] text-[11px] text-slate-400">
+                      {trade.diagnosticReason || 'Entry-time context was not available for this historical trade.'}
                     </td>
                   </tr>
                 );

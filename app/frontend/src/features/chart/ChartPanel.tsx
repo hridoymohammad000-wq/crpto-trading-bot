@@ -39,8 +39,17 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
   isLoading = false,
   className = '',
 }) => {
-  // Fetch available symbols for the selector
-  const availableSymbols = useWatchlistSymbols();
+  // Scanner-qualified Top 10 drives the chart universe. Keep active positions and
+  // the currently selected symbol visible so a live trade/chart never vanishes
+  // just because the next scanner refresh changes rank.
+  const scannerSymbols = useWatchlistSymbols();
+  const availableSymbols = Array.from(
+    new Set([
+      selectedSymbol,
+      ...(positions || []).map((position) => position.symbol),
+      ...scannerSymbols,
+    ])
+  ) as TradingSymbol[];
 
   // Use isolated candle hook accessing frontend data layer
   const {

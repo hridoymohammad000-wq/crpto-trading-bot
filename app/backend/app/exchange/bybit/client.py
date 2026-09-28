@@ -173,6 +173,31 @@ class BybitDemoClient(ExchangeClient):
         if self._http_client is not None:
             await self._http_client.aclose()
             self._http_client = None
+    async def _fetch_server_time_ms(self) -> int:
+        await self.connect()
+        if self._http_client is None:
+            raise BybitConnectionError("Bybit Demo HTTP client is unavailable")
+        response = await self._http_client.get("/v5/market/time")
+        if not response.is_success:
+            raise BybitAPIError(
+                f"Bybit Demo server-time returned HTTP status {response.status_code}"
+            )
+
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("retCode") != 0:
+            raise BybitAPIError("Bybit server-time response is malformed")
+
+        if payload.get("time") not in (None, ""):
+            return int(payload["time"])
+
+        result = payload.get("result")
+        if isinstance(result, dict):
+            if result.get("timeNano") not in (None, ""):
+                return int(result["timeNano"]) // 1_000_000
+            if result.get("timeSecond") not in (None, ""):
+                return int(result["timeSecond"]) * 1000
+
+        raise BybitAPIError("Bybit server-time response is malformed")
 
     async def get_server_time(self) -> int:
         payload = await self._get("/v5/market/time")
@@ -658,6 +683,56 @@ class BybitDemoClient(ExchangeClient):
             order_link_id=f"close-{symbol.lower()}",
         )
 
+    async def _fetch_server_time_ms(self) -> int:
+        await self.connect()
+        if self._http_client is None:
+            raise BybitConnectionError("Bybit Demo HTTP client is unavailable")
+
+        try:
+            response = await self._http_client.get("/v5/market/time")
+        except httpx.TimeoutException as exc:
+            raise BybitConnectionError("Bybit server-time request timed out") from exc
+        except httpx.RequestError as exc:
+            raise BybitConnectionError("Bybit server-time request failed") from exc
+
+        if not response.is_success:
+            raise BybitAPIError(
+                f"Bybit server-time returned HTTP status {response.status_code}"
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise BybitAPIError("Bybit server-time response is not valid JSON") from exc
+
+        if not isinstance(payload, dict) or payload.get("retCode") != 0:
+            raise BybitAPIError("Bybit server-time response is malformed")
+
+        raw_time = payload.get("time")
+        if raw_time not in (None, ""):
+            try:
+                return int(raw_time)
+            except (TypeError, ValueError):
+                pass
+
+        result = payload.get("result")
+        if isinstance(result, dict):
+            raw_nano = result.get("timeNano")
+            if raw_nano not in (None, ""):
+                try:
+                    return int(raw_nano) // 1_000_000
+                except (TypeError, ValueError):
+                    pass
+
+            raw_seconds = result.get("timeSecond")
+            if raw_seconds not in (None, ""):
+                try:
+                    return int(raw_seconds) * 1000
+                except (TypeError, ValueError):
+                    pass
+
+        raise BybitAPIError("Bybit server-time response is malformed")
+
     async def _get(
         self,
         path: str,
@@ -666,49 +741,61 @@ class BybitDemoClient(ExchangeClient):
         authenticated: bool = False,
     ) -> dict[str, object]:
         query_string = urlencode(params or {})
-        headers: dict[str, str] = {}
-        if authenticated:
-            headers = build_get_auth_headers(
-                api_key=self.api_key,
-                api_secret=self.api_secret,
-                query_string=query_string,
-                recv_window_ms=self.recv_window_ms,
-            )
 
         await self.connect()
         if self._http_client is None:
             raise BybitConnectionError("Bybit Demo HTTP client is unavailable")
 
-        try:
-            response = await self._http_client.get(
-                path,
-                params=params,
-                headers=headers,
-            )
-        except httpx.TimeoutException as exc:
-            raise BybitConnectionError("Bybit Demo request timed out") from exc
-        except httpx.RequestError as exc:
-            raise BybitConnectionError("Bybit Demo request failed") from exc
+        async def send(timestamp_ms: int | None = None) -> dict[str, object]:
+            headers: dict[str, str] = {}
+            if authenticated:
+                headers = build_get_auth_headers(
+                    api_key=self.api_key,
+                    api_secret=self.api_secret,
+                    query_string=query_string,
+                    recv_window_ms=self.recv_window_ms,
+                    timestamp_ms=timestamp_ms,
+                )
 
-        if not response.is_success:
+            try:
+                response = await self._http_client.get(
+                    path,
+                    params=params,
+                    headers=headers,
+                )
+            except httpx.TimeoutException as exc:
+                raise BybitConnectionError("Bybit Demo request timed out") from exc
+            except httpx.RequestError as exc:
+                raise BybitConnectionError("Bybit Demo request failed") from exc
+
+            if not response.is_success:
+                raise BybitAPIError(
+                    f"Bybit Demo returned HTTP status {response.status_code}"
+                )
+
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise BybitAPIError("Bybit response is not valid JSON") from exc
+
+            if not isinstance(payload, dict) or "retCode" not in payload:
+                raise BybitAPIError("Bybit response is malformed")
+
+            return payload
+
+        payload = await send()
+
+        if authenticated and payload.get("retCode") == 10002:
+            server_time_ms = await self._fetch_server_time_ms()
+            payload = await send(timestamp_ms=server_time_ms)
+
+        if payload.get("retCode") != 0:
             raise BybitAPIError(
-                f"Bybit Demo returned HTTP status {response.status_code}"
-            )
-
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise BybitAPIError("Bybit response is not valid JSON") from exc
-
-        if not isinstance(payload, dict) or "retCode" not in payload:
-            raise BybitAPIError("Bybit response is malformed")
-        if payload["retCode"] != 0:
-            raise BybitAPIError(
-                f"Bybit API returned error code {payload['retCode']}"
+                f"Bybit API returned error code {payload.get('retCode')}: "
+                f"{payload.get('retMsg', 'unknown error')}"
             )
 
         return payload
-
 
     async def _post(
         self,
@@ -717,40 +804,60 @@ class BybitDemoClient(ExchangeClient):
         body: dict[str, object],
     ) -> dict[str, object]:
         json_body = json.dumps(body, separators=(",", ":"), sort_keys=True)
-        headers = build_post_auth_headers(
-            api_key=self.api_key,
-            api_secret=self.api_secret,
-            json_body=json_body,
-            recv_window_ms=self.recv_window_ms,
-        )
+
         await self.connect()
         if self._http_client is None:
             raise BybitConnectionError("Bybit Demo HTTP client is unavailable")
-        try:
-            response = await self._http_client.post(
-                path,
-                content=json_body,
-                headers=headers,
+
+        async def send(timestamp_ms: int | None = None) -> dict[str, object]:
+            headers = build_post_auth_headers(
+                api_key=self.api_key,
+                api_secret=self.api_secret,
+                json_body=json_body,
+                recv_window_ms=self.recv_window_ms,
+                timestamp_ms=timestamp_ms,
             )
-        except httpx.TimeoutException as exc:
-            raise BybitConnectionError("Bybit Demo request timed out") from exc
-        except httpx.RequestError as exc:
-            raise BybitConnectionError("Bybit Demo request failed") from exc
-        if not response.is_success:
+
+            try:
+                response = await self._http_client.post(
+                    path,
+                    content=json_body,
+                    headers=headers,
+                )
+            except httpx.TimeoutException as exc:
+                raise BybitConnectionError("Bybit Demo request timed out") from exc
+            except httpx.RequestError as exc:
+                raise BybitConnectionError("Bybit Demo request failed") from exc
+
+            if not response.is_success:
+                raise BybitAPIError(
+                    f"Bybit Demo returned HTTP status {response.status_code}"
+                )
+
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise BybitAPIError("Bybit response is not valid JSON") from exc
+
+            if not isinstance(payload, dict) or "retCode" not in payload:
+                raise BybitAPIError("Bybit response is malformed")
+
+            return payload
+
+        payload = await send()
+
+        if payload.get("retCode") == 10002:
+            server_time_ms = await self._fetch_server_time_ms()
+            payload = await send(timestamp_ms=server_time_ms)
+
+        if payload.get("retCode") != 0:
             raise BybitAPIError(
-                f"Bybit Demo returned HTTP status {response.status_code}"
+                f"Bybit API returned error code {payload.get('retCode')}: "
+                f"{payload.get('retMsg', 'unknown error')}"
             )
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise BybitAPIError("Bybit response is not valid JSON") from exc
-        if not isinstance(payload, dict) or "retCode" not in payload:
-            raise BybitAPIError("Bybit response is malformed")
-        if payload["retCode"] != 0:
-            raise BybitAPIError(
-                f"Bybit API returned error code {payload['retCode']}"
-            )
+
         return payload
+
 
     @staticmethod
     def _floor_to_step(value: Decimal, step: Decimal) -> Decimal:
@@ -906,4 +1013,5 @@ class BybitDemoClient(ExchangeClient):
             ValidationError,
         ) as exc:
             raise BybitAPIError("Bybit Kline response is malformed") from exc
+
 

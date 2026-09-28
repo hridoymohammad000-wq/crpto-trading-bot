@@ -9,6 +9,7 @@ interface BackendTrade {
   exit_price?: number | string;
   realized_pnl: number | string;
   created_at?: string;
+  updated_at?: string;
 }
 
 interface BackendStats {
@@ -38,9 +39,21 @@ export async function getPerformance(): Promise<PerformanceData> {
   const grossProfit = Number(stats.gross_profit || 0);
   const grossLoss = Number(stats.gross_loss || 0);
 
+  const today = new Date();
+  const dailyPnl = trades.reduce((sum, trade) => {
+    const value = trade.updated_at || trade.created_at;
+    if (!value) return sum;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return sum;
+    const sameDay = date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate();
+    return sameDay ? sum + Number(trade.realized_pnl || 0) : sum;
+  }, 0);
+
   const metrics: PerformanceMetrics = {
     totalPnl: Number(stats.total_realized_pnl || 0),
-    dailyPnl: 0, // Fallback, no easy way without filtering by today
+    dailyPnl,
     totalPnlPercentage: 0,
     winRate: Number(stats.win_rate_pct || 0),
     profitFactor: Number(stats.profit_factor ?? 0),
@@ -59,13 +72,14 @@ export async function getPerformance(): Promise<PerformanceData> {
   let cumulativeEquity = 10000; // Starting with a base line for equity curve
   
   const sortedTrades = [...trades].sort((a, b) => {
-    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    return new Date(a.updated_at || a.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime();
   });
 
   for (const t of sortedTrades) {
     const pnl = Number(t.realized_pnl || 0);
     cumulativeEquity += pnl;
-    const dateStr = t.created_at ? new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) : 'Unknown';
+    const closedAt = t.updated_at || t.created_at;
+    const dateStr = closedAt ? new Date(closedAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) : 'Unknown';
     equityCurve.push({ label: dateStr, equity: cumulativeEquity });
 
     pnlByDayMap.set(dateStr, (pnlByDayMap.get(dateStr) || 0) + pnl);

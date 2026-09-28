@@ -50,53 +50,67 @@ class StrategyLabService:
         self,
         prices: dict[str, Decimal],
     ) -> int:
-        """Mark OPEN paper signals against supplied market prices."""
-
+        """Mark OPEN paper trades and resolve the fixed 1%-risk / 2%-target lifecycle."""
         if self._repository is None:
             return 0
 
-        rows = self._repository.list_signals(
-            limit=10000,
-            status="OPEN",
-        )
-
+        rows = self._repository.list_signals(limit=10000, status="OPEN")
         updated = 0
 
         for row in rows:
             symbol = str(row["symbol"])
             current_price = prices.get(symbol)
-
             if current_price is None:
                 continue
-
             entry_price = Decimal(str(row["entry_price"]))
-
             if entry_price <= 0:
                 continue
-
             side = str(row["side"]).upper()
-
             if side == "BUY":
-                pnl_pct = (
-                    (current_price - entry_price)
-                    / entry_price
-                ) * Decimal("100")
-
+                pnl_pct = ((current_price - entry_price) / entry_price) * Decimal("100")
             elif side == "SELL":
-                pnl_pct = (
-                    (entry_price - current_price)
-                    / entry_price
-                ) * Decimal("100")
-
+                pnl_pct = ((entry_price - current_price) / entry_price) * Decimal("100")
             else:
                 continue
+
+            stop_loss = Decimal(str(row["stop_loss"])) if row.get("stop_loss") else None
+            take_profit = Decimal(str(row["take_profit"])) if row.get("take_profit") else None
+            status = "OPEN"
+            exit_reason = None
+            diagnostic_reason = None
+
+            sl_hit = stop_loss is not None and (current_price <= stop_loss if side == "BUY" else current_price >= stop_loss)
+            tp_hit = take_profit is not None and (current_price >= take_profit if side == "BUY" else current_price <= take_profit)
+
+            if sl_hit:
+                status = "SL_HIT"
+                exit_reason = "PAPER_SL_HIT"
+                reasons: list[str] = []
+                adx = Decimal(str(row["adx"])) if row.get("adx") not in (None, "") else None
+                rsi = Decimal(str(row["rsi"])) if row.get("rsi") not in (None, "") else None
+                age = int(row["crossover_age_candles"]) if row.get("crossover_age_candles") is not None else None
+                if adx is not None and adx < Decimal("20"):
+                    reasons.append("LOW_ADX / RANGING_REGIME")
+                if age is not None and age >= 2:
+                    reasons.append("LATE_ENTRY")
+                if rsi is not None and ((side == "BUY" and rsi >= Decimal("70")) or (side == "SELL" and rsi <= Decimal("30"))):
+                    reasons.append("ENTRY_OVEREXTENDED_RSI")
+                if not reasons:
+                    reasons.append("MARKET_REVERSAL_AFTER_ENTRY")
+                diagnostic_reason = "Heuristic: " + ", ".join(reasons)
+            elif tp_hit:
+                status = "TP_HIT"
+                exit_reason = "PAPER_TP_HIT"
+                diagnostic_reason = "Paper target reached under the fixed 2R lab benchmark."
 
             self._repository.update_mark(
                 str(row["signal_id"]),
                 current_price=current_price,
                 pnl_pct=pnl_pct,
+                status=status,
+                exit_reason=exit_reason,
+                diagnostic_reason=diagnostic_reason,
             )
-
             updated += 1
 
         return updated
