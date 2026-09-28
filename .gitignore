@@ -41,3 +41,4 @@ REPLACE_INSTRUCTIONS.txt
 # Backups
 *.backup
 *.bak*
+app/backend/.local_secret
