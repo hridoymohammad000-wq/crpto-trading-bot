@@ -13,12 +13,23 @@ export interface AIAnalysisResponse {
   provider: string;
   model: string;
   mode: 'analysis_only';
+
+  action?: 'ALLOW' | 'CAUTION' | 'BLOCK' | null;
+  confidence?: number | null;
+  market_regime?: string | null;
+  symbol?: string | null;
 }
 
 export async function getAIStatus(): Promise<AIStatus> {
   return apiClient.get<AIStatus>('/ai/status');
 }
 
-export async function requestAIAnalysis(context: Record<string, unknown>, question?: string): Promise<AIAnalysisResponse> {
-  return apiClient.post<AIAnalysisResponse>('/ai/analyze', { context, question });
+export async function requestAIAnalysis(
+  context: Record<string, unknown>,
+  question?: string
+): Promise<AIAnalysisResponse> {
+  return apiClient.post<AIAnalysisResponse>(
+    '/ai/analyze',
+    { context, question }
+  );
 }

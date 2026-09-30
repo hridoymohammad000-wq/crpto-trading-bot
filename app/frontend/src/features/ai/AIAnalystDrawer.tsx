@@ -1,178 +1,389 @@
-﻿import ReactMarkdown from 'react-markdown';
-import React, { useEffect, useState, useRef } from 'react';
-import { BrainCircuit, ShieldCheck, Sparkles, X, Send, Loader2, MessageSquare } from 'lucide-react';
-import { getAIStatus, requestAIAnalysis, AIStatus } from '../../api/ai';
-import { fetchScannerStatus, fetchScannerCandidates, fetchScannerWatchlist } from '../../api/scanner';
+﻿import React, { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import {
+  BrainCircuit,
+  Loader2,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  X,
+} from 'lucide-react';
+
+import {
+  AIAnalysisResponse,
+  AIStatus,
+  getAIStatus,
+  requestAIAnalysis,
+} from '../../api/ai';
+import {
+  fetchScannerCandidates,
+  fetchScannerStatus,
+  fetchScannerWatchlist,
+} from '../../api/scanner';
 import { apiClient } from '../../api/client';
 import { buildEnrichedAIContext } from './contextBuilder';
 
-interface AIAnalystDrawerProps {
+interface Props {
   isOpen: boolean;
   onClose: () => void;
   contextData: Record<string, unknown>;
 }
 
-export const AIAnalystDrawer: React.FC<AIAnalystDrawerProps> = ({ isOpen, onClose, contextData }) => {
+interface HistoryItem extends AIAnalysisResponse {
+  id: string;
+  question: string;
+  analyzedAt: string;
+  contextSnapshot: Record<string, unknown>;
+}
+
+export const AIAnalystDrawer: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  contextData,
+}) => {
   const [status, setStatus] = useState<AIStatus | null>(null);
-  const [messages, setMessages] = useState<{role: 'user' | 'ai', content: string}[]>([]);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [latest, setLatest] = useState<HistoryItem | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getAIStatus().then(setStatus).catch(() => setStatus(null));
+    getAIStatus()
+      .then((value) => {
+        setStatus(value);
+        setStatusError(null);
+      })
+      .catch((err) => {
+        setStatus(null);
+        setStatusError(
+          err instanceof Error ? err.message : 'Unable to load AI status'
+        );
+      });
   }, []);
 
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, loading]);
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [history, loading]);
+
+  const ready = Boolean(status?.enabled && status?.configured);
 
   const runAnalysis = async (question: string) => {
-    if (!question.trim()) return;
-    
-    setMessages(prev => [...prev, { role: 'user', content: question }]);
-    setInput('');
+    if (!question.trim() || !ready || loading) return;
+
     setLoading(true);
-    
+    setRuntimeError(null);
+    setInput('');
+
     try {
-      const [scannerStatus, scannerCandidates, scannerWatchlist, botRuntime] = await Promise.all([
+      const [
+        scannerStatus,
+        scannerCandidates,
+        scannerWatchlist,
+        botRuntime,
+      ] = await Promise.all([
         fetchScannerStatus().catch(() => null),
         fetchScannerCandidates().catch(() => null),
         fetchScannerWatchlist().catch(() => null),
-        apiClient.get('/bot/runtime').catch(() => null)
+        apiClient.get('/bot/runtime').catch(() => null),
       ]);
 
-      const enrichedContext = buildEnrichedAIContext(
+      const enriched = buildEnrichedAIContext(
         contextData,
         scannerStatus,
         scannerCandidates,
         scannerWatchlist,
         botRuntime
       );
-      
-      const result = await requestAIAnalysis(enrichedContext, question);
-      setMessages(prev => [...prev, { role: 'ai', content: result.analysis }]);
+
+      const result = await requestAIAnalysis(
+        enriched,
+        question
+      );
+
+      const item: HistoryItem = {
+        ...result,
+        id: `${Date.now()}`,
+        question,
+        analyzedAt: new Date().toISOString(),
+        contextSnapshot: enriched,
+      };
+
+      setLatest(item);
+      setHistory((prev) => [item, ...prev].slice(0, 20));
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'ai', content: `Error: ${err instanceof Error ? err.message : 'AI analysis failed'}` }]);
+      setRuntimeError(
+        err instanceof Error
+          ? err.message
+          : 'AI analysis failed'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const quickPrompts = [
-    "Why no signals?",
-    "Summarize scanner",
-    "Best current setups",
-    "Explain blocked symbols",
-    "Summarize today's performance",
-    "System health"
-  ];
+  const actionClass =
+    latest?.action === 'ALLOW'
+      ? 'text-emerald-300 border-emerald-800 bg-emerald-950/40'
+      : latest?.action === 'BLOCK'
+      ? 'text-rose-300 border-rose-800 bg-rose-950/40'
+      : latest?.action === 'CAUTION'
+      ? 'text-amber-300 border-amber-800 bg-amber-950/40'
+      : 'text-slate-400 border-slate-700 bg-slate-900';
 
-  const ready = Boolean(status?.enabled && status?.configured);
+  const quickPrompts = [
+    'Why no signals?',
+    'Summarize scanner',
+    'Best current setups',
+    'Explain blocked symbols',
+    "Summarize today's performance",
+    'System health',
+  ];
 
   return (
     <>
-      {/* Backdrop */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-40 transition-opacity"
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm"
           onClick={onClose}
         />
       )}
-      
-      {/* Drawer */}
-      <div 
-        className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-slate-950 border-l border-slate-800 z-50 transform transition-transform duration-300 ease-in-out flex flex-col font-mono shadow-2xl ${
+
+      <div
+        className={`fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l border-slate-800 bg-slate-950 font-mono shadow-2xl transition-transform duration-300 sm:w-[460px] ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50">
+        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/50 p-4">
           <div className="flex items-center gap-2">
             <BrainCircuit size={18} className="text-violet-400" />
-            <h2 className="text-sm font-semibold text-slate-100 font-sans tracking-tight">AI Analyst</h2>
-            <span className={`ml-2 rounded border px-1.5 py-0.5 text-[9px] ${ready ? 'border-emerald-800/60 bg-emerald-950/40 text-emerald-300' : 'border-slate-700 bg-slate-950 text-slate-400'}`}>
-              {ready ? status?.model : 'Offline'}
+            <div>
+              <div className="text-sm font-semibold text-slate-100">
+                AI Analyst
+              </div>
+              <div className="text-[10px] text-slate-500">
+                READ-ONLY ADVISORY
+              </div>
+            </div>
+
+            <span
+              className={`ml-2 rounded border px-1.5 py-0.5 text-[9px] ${
+                ready
+                  ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
+                  : 'border-rose-800 bg-rose-950/40 text-rose-300'
+              }`}
+            >
+              {ready ? 'ACTIVE' : 'OFFLINE'}
             </span>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors">
+
+          <button
+            onClick={onClose}
+            className="rounded p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+          >
             <X size={16} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-          <div className="rounded border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-[10px] text-emerald-300/90 flex gap-2 items-start">
-            <ShieldCheck size={14} className="shrink-0 mt-0.5" />
-            <p className="leading-relaxed">READ-ONLY MODE: AI cannot place orders, approve risk, change SL/TP, bypass readiness, alter strategy settings, or start/stop the bot.</p>
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
+              <div className="text-slate-500">Provider</div>
+              <div className="mt-1 text-slate-200">
+                {status?.provider || 'Unavailable'}
+              </div>
+            </div>
+
+            <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
+              <div className="text-slate-500">Model</div>
+              <div className="mt-1 truncate text-slate-200">
+                {status?.model || 'Unavailable'}
+              </div>
+            </div>
+
+            <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
+              <div className="text-slate-500">Configured</div>
+              <div className="mt-1 text-slate-200">
+                {status?.configured ? 'YES' : 'NO'}
+              </div>
+            </div>
+
+            <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
+              <div className="text-slate-500">Mode</div>
+              <div className="mt-1 text-emerald-300">
+                ANALYSIS ONLY
+              </div>
+            </div>
           </div>
 
-          {messages.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 text-slate-500 opacity-80 mt-8">
-              <BrainCircuit size={48} className="text-slate-700 mb-2" />
-              <p className="text-xs max-w-[250px]">Ask me anything about the current trading state, scanner behavior, or system health.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4 pb-4">
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                  <div className="flex items-center gap-1.5 mb-1.5 px-1">
-                    {msg.role === 'ai' ? (
-                      <><Sparkles size={10} className="text-violet-400"/><span className="text-[10px] text-violet-400 font-semibold tracking-wider">AI ANALYST</span></>
-                    ) : (
-                      <><span className="text-[10px] text-slate-500 tracking-wider">USER</span></>
-                    )}
-                  </div>
-                  <div className={`text-[12px] px-3 py-2 rounded-md max-w-[95%] leading-relaxed ${
-                    msg.role === 'user' 
-                      ? 'bg-slate-800/80 text-slate-200 border border-slate-700' 
-                      : 'bg-violet-950/20 text-slate-300 border border-violet-900/30 whitespace-pre-wrap'
-                  }`}>
-                    {msg.role === 'ai' ? <ReactMarkdown>{msg.content}</ReactMarkdown> : msg.content}
-                  </div>
-                </div>
-              ))}
-              {loading && (
-                <div className="flex items-start">
-                  <div className="text-[12px] px-3 py-2 rounded-md bg-violet-950/20 text-violet-300 border border-violet-900/30 flex items-center gap-2">
-                    <Loader2 size={12} className="animate-spin" /> Analyzing...
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
+          <div className="flex gap-2 rounded border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-[10px] text-emerald-300">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0" />
+            <span>
+              AI cannot place orders, approve risk, change SL/TP,
+              bypass readiness, or start/stop the bot.
+            </span>
+          </div>
+
+          {(statusError || runtimeError) && (
+            <div className="rounded border border-rose-800/60 bg-rose-950/30 px-3 py-2 text-[10px] text-rose-300">
+              {statusError || runtimeError}
             </div>
           )}
+
+          {latest && (
+            <section className="space-y-3 rounded border border-violet-900/50 bg-violet-950/10 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-violet-300">
+                  <Sparkles size={11} />
+                  LATEST AI ANALYSIS
+                </div>
+
+                <span
+                  className={`rounded border px-2 py-0.5 text-[10px] font-bold ${actionClass}`}
+                >
+                  {latest.action || 'UNAVAILABLE'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <div>
+                  <span className="text-slate-500">Symbol:</span>{' '}
+                  <span className="text-slate-200">
+                    {latest.symbol || 'Unavailable'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-500">Confidence:</span>{' '}
+                  <span className="text-slate-200">
+                    {latest.confidence == null
+                      ? 'Unavailable'
+                      : `${latest.confidence}%`}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-500">Regime:</span>{' '}
+                  <span className="text-slate-200">
+                    {latest.market_regime || 'Unavailable'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-500">Time:</span>{' '}
+                  <span className="text-slate-200">
+                    {new Date(latest.analyzedAt).toLocaleTimeString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded border border-slate-800 bg-slate-950/60 p-2 text-[11px] leading-relaxed text-slate-300">
+                <ReactMarkdown>{latest.analysis}</ReactMarkdown>
+              </div>
+
+              <details className="rounded border border-slate-800 bg-slate-950/50 p-2">
+                <summary className="cursor-pointer text-[10px] text-cyan-300">
+                  FACTUAL CONTEXT SENT TO AI
+                </summary>
+
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-[9px] text-slate-500">
+                  {JSON.stringify(latest.contextSnapshot, null, 2)}
+                </pre>
+              </details>
+            </section>
+          )}
+
+          <section className="space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Analysis History
+            </div>
+
+            {history.length === 0 ? (
+              <div className="rounded border border-slate-800 bg-slate-900/40 p-4 text-center text-[11px] text-slate-600">
+                No AI analysis has been run in this session.
+              </div>
+            ) : (
+              history.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setLatest(item)}
+                  className="w-full rounded border border-slate-800 bg-slate-900/50 p-2 text-left hover:border-slate-700"
+                >
+                  <div className="flex justify-between gap-2 text-[10px]">
+                    <span className="truncate text-slate-300">
+                      {item.question}
+                    </span>
+                    <span className="shrink-0 text-slate-600">
+                      {new Date(item.analyzedAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+
+                  <div className="mt-1 flex gap-2 text-[9px] text-slate-500">
+                    <span>{item.symbol || 'No symbol'}</span>
+                    <span>•</span>
+                    <span>{item.action || 'No action'}</span>
+                    <span>•</span>
+                    <span>
+                      {item.confidence == null
+                        ? 'No confidence'
+                        : `${item.confidence}%`}
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+          </section>
+
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-violet-300">
+              <Loader2 size={12} className="animate-spin" />
+              AI analyzing current factual snapshot...
+            </div>
+          )}
+
+          <div ref={endRef} />
         </div>
 
-        <div className="p-3 bg-slate-900/50 border-t border-slate-800">
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {quickPrompts.map(prompt => (
-              <button 
+        <div className="border-t border-slate-800 bg-slate-900/50 p-3">
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {quickPrompts.map((prompt) => (
+              <button
                 key={prompt}
                 onClick={() => runAnalysis(prompt)}
-                disabled={loading || !ready}
-                className="px-2 py-1 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 rounded text-[10px] text-slate-300 transition-colors disabled:opacity-40"
+                disabled={!ready || loading}
+                className="rounded border border-slate-700 bg-slate-800/50 px-2 py-1 text-[10px] text-slate-300 hover:bg-slate-700 disabled:opacity-40"
               >
                 {prompt}
               </button>
             ))}
           </div>
-          <form 
-            onSubmit={(e) => { e.preventDefault(); runAnalysis(input); }}
-            className="flex gap-2 relative"
+
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              runAnalysis(input);
+            }}
+            className="flex gap-2"
           >
             <input
-              type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={ready ? "Ask about strategy, scanner..." : "AI Offline"}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={
+                ready
+                  ? 'Ask AI about current bot state...'
+                  : 'AI unavailable'
+              }
               disabled={!ready || loading}
-              className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+              className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 focus:border-violet-500 focus:outline-none disabled:opacity-50"
             />
-            <button 
+
+            <button
               type="submit"
               disabled={!input.trim() || !ready || loading}
-              className="bg-violet-600 hover:bg-violet-500 text-white p-2 rounded flex items-center justify-center transition-colors disabled:opacity-50 disabled:hover:bg-violet-600 shrink-0"
+              className="rounded bg-violet-600 p-2 text-white hover:bg-violet-500 disabled:opacity-40"
             >
               <Send size={14} />
             </button>
@@ -182,6 +393,3 @@ export const AIAnalystDrawer: React.FC<AIAnalystDrawerProps> = ({ isOpen, onClos
     </>
   );
 };
-
-
-

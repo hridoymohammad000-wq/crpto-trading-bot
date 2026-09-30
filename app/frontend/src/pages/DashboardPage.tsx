@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Bell, X } from 'lucide-react';
 import { ChartPanel } from '../features/chart/ChartPanel';
 import { Header } from '../components/Header';
@@ -48,6 +48,8 @@ export const DashboardPage: React.FC = () => {
   } = useDashboard();
 
   const aiContext = {
+    selectedSymbol,
+    selectedTimeframe,
     botStatus: botBackend.botStatus,
     metrics,
     openPositions: displayedPositions,
@@ -190,3 +192,4 @@ export const DashboardPage: React.FC = () => {
     </div>
   );
 };
+

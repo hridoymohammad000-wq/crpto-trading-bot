@@ -127,21 +127,21 @@
 
 ## Task 4 — Visible AI Analysis
 
-- [ ] Show AI enabled/disabled status
-- [ ] Show provider/model
-- [ ] Show last analysis time
-- [ ] Show analyzed symbol
-- [ ] Show market regime
-- [ ] Show AI confidence
-- [ ] Show factual context sent to AI
-- [ ] Show AI output/advice
-- [ ] ALLOW / CAUTION / BLOCK status
-- [ ] AI analysis history
-- [ ] Show API/runtime errors
-- [ ] AI stays advisor/diagnostic layer
-- [ ] Tests/build/UI verify
-- [ ] Commit + push
-- [ ] Mark Task 4 complete
+- [x] Show AI enabled/disabled status
+- [x] Show provider/model
+- [x] Show last analysis time
+- [x] Show analyzed symbol
+- [x] Show market regime
+- [x] Show AI confidence
+- [x] Show factual context sent to AI
+- [x] Show AI output/advice
+- [x] ALLOW / CAUTION / BLOCK status
+- [x] AI analysis history
+- [x] Show API/runtime errors
+- [x] AI stays advisor/diagnostic layer
+- [x] Tests/build/UI verify
+- [x] Commit + push
+- [x] Mark Task 4 complete
 
 ---
 
@@ -196,6 +196,7 @@
 - [ ] Latest commit pushed to main
 - [ ] Vercel production updated
 - [ ] Production verified
+
 
 
 
