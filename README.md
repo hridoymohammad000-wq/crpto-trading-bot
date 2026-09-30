@@ -89,39 +89,39 @@
 
 ## Task 3 — SL Root-Cause Analysis
 
-- [ ] Persist entry-time diagnostic snapshot
-- [ ] 1H trend
-- [ ] 15M setup/trend
-- [ ] 5M entry context
-- [ ] RSI
-- [ ] ADX
-- [ ] ATR
-- [ ] Volume / RVOL
-- [ ] EMA alignment
-- [ ] Market structure
-- [ ] Entry/setup quality
-- [ ] SL distance vs ATR
-- [ ] COUNTER_TREND_ENTRY
-- [ ] LOW_ADX_RANGING_MARKET
-- [ ] LATE_ENTRY
-- [ ] OVEREXTENDED_RSI
-- [ ] LOW_VOLUME_CONFIRMATION
-- [ ] FAILED_BREAKOUT
-- [ ] STRUCTURE_REVERSAL
-- [ ] VOLATILITY_SPIKE
-- [ ] SL_TOO_TIGHT_FOR_ATR
-- [ ] POOR_RR_STRUCTURE
-- [ ] ENTRY_NEAR_SUPPORT
-- [ ] ENTRY_NEAR_RESISTANCE
-- [ ] MOMENTUM_REVERSAL
-- [ ] UNKNOWN_INSUFFICIENT_EVIDENCE
-- [ ] Show primary reason
-- [ ] Show secondary reasons
-- [ ] Show factual evidence
-- [ ] Aggregate SL reason statistics
-- [ ] Tests/build/UI verify
-- [ ] Commit + push
-- [ ] Mark Task 3 complete
+- [x] Persist entry-time diagnostic snapshot
+- [x] 1H trend
+- [x] 15M setup/trend
+- [x] 5M entry context
+- [x] RSI
+- [x] ADX
+- [x] ATR
+- [x] Volume / RVOL
+- [x] EMA alignment
+- [x] Market structure
+- [x] Entry/setup quality
+- [x] SL distance vs ATR
+- [x] COUNTER_TREND_ENTRY
+- [x] LOW_ADX_RANGING_MARKET
+- [x] LATE_ENTRY
+- [x] OVEREXTENDED_RSI
+- [x] LOW_VOLUME_CONFIRMATION
+- [x] FAILED_BREAKOUT
+- [x] STRUCTURE_REVERSAL
+- [x] VOLATILITY_SPIKE
+- [x] SL_TOO_TIGHT_FOR_ATR
+- [x] POOR_RR_STRUCTURE
+- [x] ENTRY_NEAR_SUPPORT
+- [x] ENTRY_NEAR_RESISTANCE
+- [x] MOMENTUM_REVERSAL
+- [x] UNKNOWN_INSUFFICIENT_EVIDENCE
+- [x] Show primary reason
+- [x] Show secondary reasons
+- [x] Show factual evidence
+- [x] Aggregate SL reason statistics
+- [x] Tests/build/UI verify
+- [x] Commit + push
+- [x] Mark Task 3 complete
 
 ---
 
@@ -196,6 +196,7 @@
 - [ ] Latest commit pushed to main
 - [ ] Vercel production updated
 - [ ] Production verified
+
 
 
 

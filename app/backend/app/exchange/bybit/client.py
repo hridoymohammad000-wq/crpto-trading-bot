@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+﻿from dataclasses import dataclass
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, DecimalException, ROUND_DOWN, ROUND_UP
@@ -170,9 +170,17 @@ class BybitDemoClient(ExchangeClient):
             )
 
     async def disconnect(self) -> None:
-        if self._http_client is not None:
-            await self._http_client.aclose()
-            self._http_client = None
+        client = self._http_client
+        self._http_client = None
+
+        if client is None:
+            return
+
+        try:
+            await client.aclose()
+        except RuntimeError as exc:
+            if "Event loop is closed" not in str(exc):
+                raise
     async def _fetch_server_time_ms(self) -> int:
         await self.connect()
         if self._http_client is None:
@@ -1013,5 +1021,8 @@ class BybitDemoClient(ExchangeClient):
             ValidationError,
         ) as exc:
             raise BybitAPIError("Bybit Kline response is malformed") from exc
+
+
+
 
 

@@ -514,6 +514,13 @@ class BotRuntime:
                                     and signal.signal_id not in self._submitted_signal_ids
                                 ):
                                     execution_result = await _timed_await(f"execute_{symbol}", self._execution_service.execute(risk_decision), 20.0)
+
+                                    if (
+                                        self._persistence is not None
+                                        and signal is not None
+                                        and execution_result is not None
+                                    ):
+                                        self._persistence.attach_signal_snapshot(signal)
                                     if execution_result.status.value in {
                                         "SUBMITTED",
                                         "ACKNOWLEDGED",
@@ -652,6 +659,7 @@ class BotRuntime:
     @staticmethod
     def _iso(value: datetime | None) -> str | None:
         return value.isoformat() if value is not None else None
+
 
 
 

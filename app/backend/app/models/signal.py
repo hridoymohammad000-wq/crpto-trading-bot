@@ -50,6 +50,7 @@ class IndicatorSnapshot(BaseModel):
     ema_slow: Decimal | None = None
     rsi: Decimal | None = None
     adx: Decimal | None = None
+    atr: Decimal | None = None
     volume: Decimal | None = None
     average_volume: Decimal | None = None
     higher_tf_ema_fast: Decimal | None = None
@@ -79,6 +80,7 @@ class StrategySignal(BaseModel):
     higher_tf_ema_fast_previous: Decimal
     crossover_age_candles: int
     confidence: int
+    atr: Decimal | None = None
     status: SignalStatus = SignalStatus.NEW
 
 

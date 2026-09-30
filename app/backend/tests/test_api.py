@@ -1,10 +1,10 @@
-from collections.abc import Generator
+﻿from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.bot.state import bot_state
-from app.main import app
+from app.main import app, bot_runtime
 
 client = TestClient(app)
 
@@ -15,9 +15,17 @@ def auth_headers() -> dict[str, str]:
 
 @pytest.fixture(autouse=True)
 def reset_bot_state() -> Generator[None, None, None]:
+    original_leadership = bot_runtime._runtime_leadership
+
+    # API unit tests must not compete with a real/local backend process
+    # for the cross-process execution leadership lock.
+    bot_runtime._runtime_leadership = None
     bot_state.stop()
+
     yield
+
     bot_state.stop()
+    bot_runtime._runtime_leadership = original_leadership
 
 
 def test_health() -> None:

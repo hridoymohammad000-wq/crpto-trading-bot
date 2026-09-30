@@ -130,7 +130,21 @@ class PersistenceDatabase:
             leverage TEXT,
             cumulative_filled_quantity TEXT,
             average_fill_price TEXT,
-            message TEXT
+            message TEXT,
+            entry_timeframe TEXT,
+            trend_timeframe TEXT,
+            ema_fast TEXT,
+            ema_slow TEXT,
+            rsi TEXT,
+            adx TEXT,
+            atr TEXT,
+            volume TEXT,
+            average_volume TEXT,
+            higher_tf_ema_fast TEXT,
+            higher_tf_ema_slow TEXT,
+            higher_tf_ema_fast_previous TEXT,
+            crossover_age_candles INTEGER,
+            signal_confidence INTEGER
         );
 
         CREATE INDEX IF NOT EXISTS idx_execution_submitted_at
@@ -214,6 +228,20 @@ class PersistenceDatabase:
             "request_hash": "TEXT",
             "cumulative_filled_quantity": "TEXT",
             "average_fill_price": "TEXT",
+            "entry_timeframe": "TEXT",
+            "trend_timeframe": "TEXT",
+            "ema_fast": "TEXT",
+            "ema_slow": "TEXT",
+            "rsi": "TEXT",
+            "adx": "TEXT",
+            "atr": "TEXT",
+            "volume": "TEXT",
+            "average_volume": "TEXT",
+            "higher_tf_ema_fast": "TEXT",
+            "higher_tf_ema_slow": "TEXT",
+            "higher_tf_ema_fast_previous": "TEXT",
+            "crossover_age_candles": "INTEGER",
+            "signal_confidence": "INTEGER",
         }
         for column, column_type in additions.items():
             if column not in existing:
@@ -431,6 +459,48 @@ class PersistenceDatabase:
                 ),
             )
 
+    def attach_signal_snapshot(self, signal) -> None:
+        """Persist immutable entry-time strategy context for later diagnostics."""
+        self.initialize()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE execution_submissions
+                SET
+                    entry_timeframe=?,
+                    trend_timeframe=?,
+                    ema_fast=?,
+                    ema_slow=?,
+                    rsi=?,
+                    adx=?,
+                    atr=?,
+                    volume=?,
+                    average_volume=?,
+                    higher_tf_ema_fast=?,
+                    higher_tf_ema_slow=?,
+                    higher_tf_ema_fast_previous=?,
+                    crossover_age_candles=?,
+                    signal_confidence=?
+                WHERE signal_id=?
+                """,
+                (
+                    signal.entry_timeframe,
+                    signal.trend_timeframe,
+                    str(signal.ema_fast),
+                    str(signal.ema_slow),
+                    str(signal.rsi),
+                    str(signal.adx),
+                    str(signal.atr) if signal.atr is not None else None,
+                    str(signal.volume),
+                    str(signal.average_volume),
+                    str(signal.higher_tf_ema_fast),
+                    str(signal.higher_tf_ema_slow),
+                    str(signal.higher_tf_ema_fast_previous),
+                    int(signal.crossover_age_candles),
+                    int(signal.confidence),
+                    signal.signal_id,
+                ),
+            )
     def get_execution(self, signal_id: str) -> ExecutionResult | None:
         self.initialize()
         with self._connect() as conn:
@@ -565,6 +635,166 @@ class PersistenceDatabase:
                     ),
                 )
 
+    @staticmethod
+    def _diagnose_sl_root_cause(
+        execution: Any | None,
+        *,
+        side: str,
+    ) -> str:
+        """Explain an SL hit from persisted entry-time facts only.
+
+        The result is deterministic. It never claims a cause when the
+        supporting entry snapshot is unavailable.
+        """
+        if execution is None:
+            return (
+                "Primary: UNKNOWN_INSUFFICIENT_EVIDENCE | "
+                "Evidence: no matched execution snapshot was available."
+            )
+
+        def dec(name: str) -> Decimal | None:
+            try:
+                value = execution[name]
+            except Exception:
+                return None
+            if value in (None, ""):
+                return None
+            try:
+                return Decimal(str(value))
+            except Exception:
+                return None
+
+        def integer(name: str) -> int | None:
+            try:
+                value = execution[name]
+            except Exception:
+                return None
+            if value in (None, ""):
+                return None
+            try:
+                return int(value)
+            except Exception:
+                return None
+
+        rsi = dec("rsi")
+        adx = dec("adx")
+        atr_value = dec("atr")
+        execution_entry = dec("price")
+        execution_stop = dec("stop_loss")
+        volume = dec("volume")
+        average_volume = dec("average_volume")
+        ema_fast = dec("ema_fast")
+        ema_slow = dec("ema_slow")
+        htf_fast = dec("higher_tf_ema_fast")
+        htf_slow = dec("higher_tf_ema_slow")
+        crossover_age = integer("crossover_age_candles")
+        confidence = integer("signal_confidence")
+
+        has_snapshot = any(
+            value is not None
+            for value in (
+                rsi,
+                adx,
+                atr_value,
+                volume,
+                average_volume,
+                ema_fast,
+                ema_slow,
+                htf_fast,
+                htf_slow,
+                crossover_age,
+                confidence,
+            )
+        )
+
+        if not has_snapshot:
+            return (
+                "Primary: UNKNOWN_INSUFFICIENT_EVIDENCE | "
+                "Evidence: this historical trade has no persisted entry-time diagnostic snapshot."
+            )
+
+        reasons: list[str] = []
+        evidence: list[str] = []
+
+        if (
+            atr_value is not None
+            and atr_value > 0
+            and execution_entry is not None
+            and execution_stop is not None
+        ):
+            stop_distance = abs(execution_entry - execution_stop)
+            stop_atr_ratio = stop_distance / atr_value
+
+            evidence.append(f"ATR={atr_value}")
+            evidence.append(f"stop_distance={stop_distance}")
+            evidence.append(f"stop_ATR={stop_atr_ratio:.2f}x")
+
+            if stop_atr_ratio < Decimal("1"):
+                reasons.append("SL_TOO_TIGHT_FOR_ATR")
+
+        if adx is not None:
+            evidence.append(f"ADX={adx}")
+            if adx < Decimal("20"):
+                reasons.append("LOW_ADX_RANGING_MARKET")
+
+        if crossover_age is not None:
+            evidence.append(f"crossover_age={crossover_age}")
+            if crossover_age >= 2:
+                reasons.append("LATE_ENTRY")
+
+        if volume is not None and average_volume is not None and average_volume > 0:
+            volume_ratio = volume / average_volume
+            evidence.append(f"volume_ratio={volume_ratio:.2f}")
+            if volume_ratio < Decimal("1"):
+                reasons.append("LOW_VOLUME_CONFIRMATION")
+
+        if rsi is not None:
+            evidence.append(f"RSI={rsi}")
+            if side == "LONG" and rsi >= Decimal("70"):
+                reasons.append("OVEREXTENDED_RSI")
+            elif side == "SHORT" and rsi <= Decimal("30"):
+                reasons.append("OVEREXTENDED_RSI")
+
+        if htf_fast is not None and htf_slow is not None:
+            evidence.append(f"HTF_EMA_fast={htf_fast}")
+            evidence.append(f"HTF_EMA_slow={htf_slow}")
+
+            if side == "LONG" and htf_fast <= htf_slow:
+                reasons.append("COUNTER_TREND_ENTRY")
+            elif side == "SHORT" and htf_fast >= htf_slow:
+                reasons.append("COUNTER_TREND_ENTRY")
+
+        if ema_fast is not None and ema_slow is not None:
+            evidence.append(f"EMA_fast={ema_fast}")
+            evidence.append(f"EMA_slow={ema_slow}")
+
+            if side == "LONG" and ema_fast <= ema_slow:
+                reasons.append("MOMENTUM_REVERSAL")
+            elif side == "SHORT" and ema_fast >= ema_slow:
+                reasons.append("MOMENTUM_REVERSAL")
+
+        if confidence is not None:
+            evidence.append(f"confidence={confidence}%")
+
+        # Keep first occurrence only while preserving priority order.
+        reasons = list(dict.fromkeys(reasons))
+
+        if not reasons:
+            reasons = ["UNKNOWN_INSUFFICIENT_EVIDENCE"]
+
+        primary = reasons[0]
+        secondary = reasons[1:]
+
+        parts = [f"Primary: {primary}"]
+
+        if secondary:
+            parts.append("Secondary: " + ", ".join(secondary))
+
+        if evidence:
+            parts.append("Evidence: " + "; ".join(evidence))
+
+        return " | ".join(parts)
+
     def list_closed_trades(self, limit: int = 100) -> list[ClosedTradeResponse]:
         """Return persisted closed trades enriched with the closest durable entry intent.
 
@@ -645,10 +875,9 @@ class PersistenceDatabase:
 
                 if realized_pnl < 0 and _near(exit_price, stop_loss):
                     exit_reason = "LIKELY_SL_HIT"
-                    diagnostic_reason = (
-                        "Exit price matched the configured stop-loss within 0.3%. "
-                        "This identifies the exit mechanism; entry-regime root cause "
-                        "is only available for trades that persisted diagnostic context."
+                    diagnostic_reason = self._diagnose_sl_root_cause(
+                        execution,
+                        side=side,
                     )
                 elif realized_pnl > 0 and _near(exit_price, take_profit):
                     exit_reason = "LIKELY_TP_HIT"
@@ -801,3 +1030,5 @@ class PersistenceDatabase:
                 "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
                 (new_hash, now, user_id)
             )
+
+

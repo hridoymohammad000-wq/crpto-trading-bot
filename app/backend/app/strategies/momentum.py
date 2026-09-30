@@ -31,7 +31,7 @@ from app.models.signal import (
     StrategyName,
     StrategySignal,
 )
-from app.strategies.indicators import adx, ema, moving_average, rsi
+from app.strategies.indicators import adx, atr, ema, moving_average, rsi
 
 ENTRY_TIMEFRAME = "5m"
 TREND_TIMEFRAME = "15m"
@@ -122,6 +122,7 @@ class EmaRsiAdxMomentumStrategy:
             return self._snapshot_result(snapshot, (NoSignalReason.INSUFFICIENT_DATA,))
 
         ema_fast, ema_slow, rsi_value, adx_value, volume, average_volume, htf_fast, htf_slow, htf_previous = values
+        atr_value = indicators.atr
         assert all(value is not None for value in values)
         reasons: list[NoSignalReason] = []
         if snapshot.crossover_age_candles > 5:
@@ -175,6 +176,7 @@ class EmaRsiAdxMomentumStrategy:
             higher_tf_ema_fast_previous=htf_previous,
             crossover_age_candles=snapshot.crossover_age_candles,
             confidence=confidence,
+            atr=atr_value,
         )
         self._emitted_setups.add(setup_key)
         return self._snapshot_result(snapshot, (), signal)
@@ -259,6 +261,7 @@ class EmaRsiAdxMomentumStrategy:
         slow = ema(closes, 21)
         rsi_values = rsi(closes, 14)
         adx_values = adx(highs, lows, closes, 14)
+        atr_values = atr(highs, lows, closes, 14)
         average_volumes = moving_average(volumes, 20)
         trend_fast = ema(trend_closes, 9)
         trend_slow = ema(trend_closes, 21)
@@ -267,6 +270,7 @@ class EmaRsiAdxMomentumStrategy:
             ema_slow=slow[-1],
             rsi=rsi_values[-1],
             adx=adx_values[-1],
+            atr=atr_values[-1],
             volume=volumes[-1],
             average_volume=average_volumes[-1],
             higher_tf_ema_fast=trend_fast[-1],

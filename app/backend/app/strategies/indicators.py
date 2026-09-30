@@ -107,6 +107,50 @@ def adx(
     return tuple(result)
 
 
+
+def atr(
+    highs: tuple[Decimal, ...],
+    lows: tuple[Decimal, ...],
+    closes: tuple[Decimal, ...],
+    period: int = 14,
+) -> IndicatorSeries:
+    """Return Wilder ATR using closed candles only."""
+    if period < 1:
+        raise ValueError("period must be positive")
+    if not (len(highs) == len(lows) == len(closes)):
+        raise ValueError("high, low, and close series must have equal lengths")
+
+    length = len(closes)
+    result: list[Decimal | None] = [None] * length
+
+    if length <= period:
+        return tuple(result)
+
+    true_ranges = [Decimal(0)] * length
+
+    for index in range(1, length):
+        true_ranges[index] = max(
+            highs[index] - lows[index],
+            abs(highs[index] - closes[index - 1]),
+            abs(lows[index] - closes[index - 1]),
+        )
+
+    current = sum(
+        true_ranges[1 : period + 1],
+        Decimal(0),
+    ) / Decimal(period)
+
+    result[period] = current
+
+    for index in range(period + 1, length):
+        current = (
+            current * Decimal(period - 1) + true_ranges[index]
+        ) / Decimal(period)
+        result[index] = current
+
+    return tuple(result)
+
+
 def moving_average(values: tuple[Decimal, ...], period: int) -> IndicatorSeries:
     """Return a trailing simple average using only the current and prior values."""
     if period < 1:
