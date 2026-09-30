@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   AlertTriangle,
   RefreshCw,
@@ -10,6 +10,7 @@ import { SymbolSelector } from '../../components/SymbolSelector';
 import { TimeframeSelector } from '../../components/TimeframeSelector';
 import { useCandles } from '../../hooks/useCandles';
 import { useWatchlistSymbols } from '../../hooks/useWatchlistSymbols';
+import { useTicker } from '../../hooks/useTicker';
 import { Position, Signal, SymbolTickerInfo, Timeframe, TradingSymbol } from '../../types';
 import { formatPrice } from '../../utils/formatters';
 import { LightweightCandlestickChart } from './LightweightCandlestickChart';
@@ -51,6 +52,13 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
     ])
   ) as TradingSymbol[];
 
+  const {
+    ticker: restTicker,
+    isLoading: isTickerLoading,
+    isError: isTickerError,
+    errorMessage: tickerErrorMessage,
+    refetch: refetchTicker,
+  } = useTicker(selectedSymbol);
   // Use isolated candle hook accessing frontend data layer
   const {
     candles,
@@ -71,7 +79,8 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
     return <ChartPanelSkeleton />;
   }
 
-  const currentTicker = tickerData?.[selectedSymbol] ?? null;
+
+  const currentTicker = tickerData?.[selectedSymbol] ?? restTicker;
   const isPositive = (currentTicker?.change24h ?? 0) >= 0;
   const priceDecimals = 2;
 
@@ -100,7 +109,7 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
                 isPositive ? 'text-emerald-400' : 'text-rose-400'
               }`}
             >
-              {currentTicker ? `$${formatPrice(currentTicker.price, priceDecimals)}` : <span className="text-slate-500 text-xs">Awaiting price…</span>}
+              {currentTicker ? `$${formatPrice(currentTicker.price, priceDecimals)}` : <span className="text-slate-500 text-xs">Awaiting priceâ€¦</span>}
               {isLivePrice && currentTicker && (
                 <span
                   className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
@@ -126,13 +135,13 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
 
             <div className="hidden xl:flex items-center gap-3 text-slate-400 text-[11px] pl-2 border-l border-slate-800">
               <span>
-                24h High: <span className="text-slate-200 font-medium">{currentTicker ? `$${currentTicker.high24h.toLocaleString()}` : '—'}</span>
+                24h High: <span className="text-slate-200 font-medium">{currentTicker ? `$${currentTicker.high24h.toLocaleString()}` : 'â€”'}</span>
               </span>
               <span>
-                24h Low: <span className="text-slate-200 font-medium">{currentTicker ? `$${currentTicker.low24h.toLocaleString()}` : '—'}</span>
+                24h Low: <span className="text-slate-200 font-medium">{currentTicker ? `$${currentTicker.low24h.toLocaleString()}` : 'â€”'}</span>
               </span>
               <span>
-                Volume: <span className="text-slate-200 font-medium">{currentTicker?.volume24h ?? '—'}</span>
+                Volume: <span className="text-slate-200 font-medium">{currentTicker?.volume24h ?? 'â€”'}</span>
               </span>
             </div>
           </div>
@@ -148,7 +157,7 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
 
           <button
             type="button"
-            onClick={() => refetch()}
+            onClick={() => { refetch(); refetchTicker(); }}
             title="Refresh Candles"
             className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
           >
@@ -159,11 +168,28 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
 
       {/* 24h High / Low / Volume Strip for Medium & Small Screens */}
       <div className="flex xl:hidden items-center justify-between px-3 py-1 bg-slate-950/70 border-b border-slate-800/80 text-[10px] font-mono text-slate-400">
-        <div>24h High: <span className="text-slate-200">{currentTicker ? `$${currentTicker.high24h.toLocaleString()}` : '—'}</span></div>
-        <div>24h Low: <span className="text-slate-200">{currentTicker ? `$${currentTicker.low24h.toLocaleString()}` : '—'}</span></div>
-        <div>Volume: <span className="text-slate-200">{currentTicker?.volume24h ?? '—'}</span></div>
+        <div>24h High: <span className="text-slate-200">{currentTicker ? `$${currentTicker.high24h.toLocaleString()}` : 'â€”'}</span></div>
+        <div>24h Low: <span className="text-slate-200">{currentTicker ? `$${currentTicker.low24h.toLocaleString()}` : 'â€”'}</span></div>
+        <div>Volume: <span className="text-slate-200">{currentTicker?.volume24h ?? 'â€”'}</span></div>
       </div>
 
+      {isTickerError && (
+        <div className="px-3 py-2 bg-amber-950/40 border-b border-amber-800/50 flex items-center justify-between text-xs font-mono text-amber-300">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} />
+            <span>
+              Ticker Warning: {tickerErrorMessage || 'Failed to load ticker data'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetchTicker()}
+            className="px-2 py-0.5 rounded bg-amber-900/60 hover:bg-amber-900 border border-amber-700/50"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {/* Error notification banner if candle fetch failed */}
       {isError && (
         <div className="px-3 py-2 bg-rose-950/40 border-b border-rose-800/50 flex items-center justify-between text-xs font-mono text-rose-300">
@@ -173,7 +199,7 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
           </div>
           <button
             type="button"
-            onClick={() => refetch()}
+            onClick={() => { refetch(); refetchTicker(); }}
             className="px-2 py-0.5 rounded bg-rose-900/60 hover:bg-rose-900 text-rose-200 border border-rose-700/50 text-[11px]"
           >
             Retry
@@ -192,3 +218,7 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({
     </div>
   );
 };
+
+
+
+

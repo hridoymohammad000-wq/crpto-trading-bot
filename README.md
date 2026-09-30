@@ -47,17 +47,17 @@
 
 ## Task 1 — Chart Symbol Search
 
-- [ ] Add manual symbol search
-- [ ] Search any valid Bybit USDT symbol
-- [ ] Search works even if symbol is not in Scanner Top 10
-- [ ] Existing scanner/watchlist quick-select remains
-- [ ] 1m / 5m / 15m works
-- [ ] Invalid symbol shows clean error
-- [ ] Frontend tests pass
-- [ ] Production build passes
-- [ ] UI verified
-- [ ] Commit + push
-- [ ] Mark Task 1 complete
+- [x] Add manual symbol search
+- [x] Search any valid Bybit USDT symbol
+- [x] Search works even if symbol is not in Scanner Top 10
+- [x] Existing scanner/watchlist quick-select remains
+- [x] 1m / 5m / 15m works
+- [x] Invalid symbol shows clean error
+- [x] Frontend tests pass
+- [x] Production build passes
+- [x] UI verified
+- [x] Commit + push
+- [x] Mark Task 1 complete
 
 ---
 
@@ -196,3 +196,5 @@
 - [ ] Latest commit pushed to main
 - [ ] Vercel production updated
 - [ ] Production verified
+
+
