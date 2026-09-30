@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Sparkles, BrainCircuit } from 'lucide-react';
 import { PerformanceCards } from '../../components/PerformanceCards';
 import { PerformanceAnalytics } from './PerformanceAnalytics';
@@ -17,13 +17,6 @@ interface Props {
 
 export const PerformanceStrategyPage: React.FC<Props> = ({ metrics, data, isLoading, isError, errorMessage, onRetry, onOpenAIAnalyst }) => (
   <div className="space-y-6">
-    <section className="space-y-3">
-      <div className="border-b border-slate-800 pb-2">
-        <h2 className="text-base font-semibold font-mono text-slate-100">Performance & Strategy</h2>
-        <p className="text-xs font-mono text-slate-400">Strategy state, realized results, and execution monitoring.</p>
-      </div>
-      <StrategyMonitor />
-    </section>
 
     <section className="space-y-3">
       <PerformanceCards metrics={metrics} isLoading={isLoading} isError={isError} errorMessage={errorMessage} onRetry={onRetry} />
@@ -49,3 +42,4 @@ export const PerformanceStrategyPage: React.FC<Props> = ({ metrics, data, isLoad
     )}
   </div>
 );
+

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.models.signal import SignalSide, StrategyName, StrategySignal
@@ -57,8 +57,8 @@ def test_lab_mark_to_market_updates_buy_pnl(tmp_path) -> None:
 
     assert updated == 1
     row = repository.list_signals(limit=1)[0]
-    assert Decimal(str(row["current_price"])) == Decimal("105")
-    assert Decimal(str(row["pnl_pct"])) == Decimal("5")
+    assert Decimal(str(row["current_price"])) == Decimal("102.00")
+    assert Decimal(str(row["pnl_pct"])) == Decimal("2.00")
     assert row["last_marked_at"] is not None
 
 
@@ -78,4 +78,44 @@ def test_lab_performance_summarizes_marked_signals(tmp_path) -> None:
     assert summary["total_signals"] == 1
     assert summary["marked_signals"] == 1
     assert summary["positive_marks"] == 1
-    assert Decimal(str(summary["avg_pnl_pct"])) == Decimal("5")
+    assert Decimal(str(summary["avg_pnl_pct"])) == Decimal("2.00")
+
+
+def test_lab_strategy_fund_starts_at_100_and_risks_one_percent(tmp_path) -> None:
+    repository = StrategyLabRepository(
+        PersistenceDatabase(str(tmp_path / "lab.sqlite3"))
+    )
+    repository.save_signal(_signal())
+
+    row = repository.list_signals(limit=1)[0]
+
+    assert Decimal(str(row["fund_starting_balance"])) == Decimal("100")
+    assert Decimal(str(row["risk_pct"])) == Decimal("1")
+    assert Decimal(str(row["risk_amount"])) == Decimal("1")
+    assert Decimal(str(row["position_size"])) == Decimal("1")
+
+
+def test_lab_tp_hit_updates_balance_to_102_and_two_r(tmp_path) -> None:
+    repository = StrategyLabRepository(
+        PersistenceDatabase(str(tmp_path / "lab.sqlite3"))
+    )
+    repository.save_signal(_signal())
+
+    service = StrategyLabService([], repository=repository)
+    updated = service.mark_open_signals({"BTCUSDT": Decimal("103")})
+
+    assert updated == 1
+
+    row = repository.list_signals(limit=1)[0]
+    assert row["status"] == "TP_HIT"
+    assert Decimal(str(row["exit_price"])) == Decimal("102")
+    assert Decimal(str(row["pnl_usdt"])) == Decimal("2")
+    assert Decimal(str(row["r_multiple"])) == Decimal("2")
+    assert Decimal(str(row["balance_after_close"])) == Decimal("102")
+
+    perf = repository.performance()[0]
+    assert Decimal(str(perf["starting_balance"])) == Decimal("100")
+    assert Decimal(str(perf["realized_pnl_usdt"])) == Decimal("2")
+    assert Decimal(str(perf["current_equity"])) == Decimal("102")
+    assert Decimal(str(perf["return_pct"])) == Decimal("2")
+

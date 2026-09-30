@@ -84,6 +84,11 @@ class StrategyLabService:
 
             if sl_hit:
                 status = "SL_HIT"
+                current_price = stop_loss
+                if side == "BUY":
+                    pnl_pct = ((current_price - entry_price) / entry_price) * Decimal("100")
+                else:
+                    pnl_pct = ((entry_price - current_price) / entry_price) * Decimal("100")
                 exit_reason = "PAPER_SL_HIT"
                 reasons: list[str] = []
                 adx = Decimal(str(row["adx"])) if row.get("adx") not in (None, "") else None
@@ -100,6 +105,11 @@ class StrategyLabService:
                 diagnostic_reason = "Heuristic: " + ", ".join(reasons)
             elif tp_hit:
                 status = "TP_HIT"
+                current_price = take_profit
+                if side == "BUY":
+                    pnl_pct = ((current_price - entry_price) / entry_price) * Decimal("100")
+                else:
+                    pnl_pct = ((entry_price - current_price) / entry_price) * Decimal("100")
                 exit_reason = "PAPER_TP_HIT"
                 diagnostic_reason = "Paper target reached under the fixed 2R lab benchmark."
 
