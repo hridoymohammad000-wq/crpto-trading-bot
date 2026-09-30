@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { Position, Trade } from '../../types';
 import { ActivePositionCards } from './ActivePositionCards';
@@ -23,6 +23,16 @@ interface Props {
   onFilterStrategyChange: (value: TradeStrategyFilter) => void;
   onResetFilters: () => void;
   hasActiveFilters: boolean;
+  walletReconciliation?: {
+    source: string;
+    walletNet: number;
+    fees: number;
+    funding: number;
+    cashFlow: number;
+    closedTradePnl: number;
+    adjustment: number;
+    transactionCount: number;
+  };
 }
 
 function money(value: number | string | null | undefined): string {
@@ -217,6 +227,74 @@ export const ActiveTradeHistoryPage: React.FC<Props> = (props) => {
           ))}
         </div>
       </section>
+
+      {props.walletReconciliation && (
+        <section className="rounded-md border border-cyan-900/50 bg-cyan-950/15 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-[11px] font-semibold font-mono text-cyan-300">
+                Bybit Wallet Reconciliation
+              </h3>
+              <p className="mt-0.5 text-[10px] font-mono text-slate-500">
+                {props.walletReconciliation.source} ? current local-calendar day ?
+                {` ${props.walletReconciliation.transactionCount} transaction rows`}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] font-mono">
+              <span className="text-slate-500">
+                Wallet Net:{' '}
+                <b className={
+                  props.walletReconciliation.walletNet >= 0
+                    ? 'text-emerald-400'
+                    : 'text-rose-400'
+                }>
+                  {money(props.walletReconciliation.walletNet)}
+                </b>
+              </span>
+
+              <span className="text-slate-500">
+                Cash Flow:{' '}
+                <b className="text-slate-200">
+                  {money(props.walletReconciliation.cashFlow)}
+                </b>
+              </span>
+
+              <span className="text-slate-500">
+                Fees:{' '}
+                <b className="text-rose-300">
+                  -${Math.abs(props.walletReconciliation.fees).toFixed(2)}
+                </b>
+              </span>
+
+              <span className="text-slate-500">
+                Funding:{' '}
+                <b className={
+                  props.walletReconciliation.funding >= 0
+                    ? 'text-emerald-400'
+                    : 'text-rose-400'
+                }>
+                  {money(props.walletReconciliation.funding)}
+                </b>
+              </span>
+
+              <span className="text-slate-500">
+                Closed PnL:{' '}
+                <b className="text-slate-200">
+                  {money(props.walletReconciliation.closedTradePnl)}
+                </b>
+              </span>
+
+              <span className="text-slate-500">
+                Wallet Adj:{' '}
+                <b className="text-amber-300">
+                  {money(props.walletReconciliation.adjustment)}
+                </b>
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex flex-col gap-3 border-b border-slate-800 pb-2 xl:flex-row xl:items-end xl:justify-between">

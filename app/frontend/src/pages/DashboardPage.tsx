@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Bell, X } from 'lucide-react';
 import { ChartPanel } from '../features/chart/ChartPanel';
 import { Header } from '../components/Header';
@@ -45,6 +45,7 @@ export const DashboardPage: React.FC = () => {
     systemNotification,
     clearSystemNotification,
     reconData,
+    dailyWalletReconciliation,
   } = useDashboard();
 
   const aiContext = {
@@ -158,6 +159,7 @@ export const DashboardPage: React.FC = () => {
               onFilterStrategyChange={tradesData.setFilterStrategy}
               onResetFilters={tradesData.resetFilters}
               hasActiveFilters={tradesData.hasActiveFilters}
+              walletReconciliation={dailyWalletReconciliation}
             />
           )}
 

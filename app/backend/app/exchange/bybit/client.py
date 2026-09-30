@@ -1,4 +1,4 @@
-﻿from dataclasses import dataclass
+from dataclasses import dataclass
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, DecimalException, ROUND_DOWN, ROUND_UP
@@ -109,6 +109,25 @@ class OrderAcknowledgement:
     order_id: str
     order_link_id: str | None
 
+
+
+@dataclass(frozen=True)
+class TransactionLogEntry:
+    transaction_id: str
+    symbol: str
+    category: str
+    side: str
+    transaction_time: datetime
+    transaction_type: str
+    quantity: Decimal | None
+    trade_price: Decimal | None
+    funding: Decimal
+    fee: Decimal
+    cash_flow: Decimal
+    change: Decimal
+    cash_balance: Decimal | None
+    order_id: str | None
+    trade_id: str | None
 
 
 @dataclass(frozen=True)
@@ -428,6 +447,94 @@ class BybitDemoClient(ExchangeClient):
             if not cursor:
                 break
         return tuple(items)
+
+    async def get_transaction_log(
+        self,
+        *,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> tuple[TransactionLogEntry, ...]:
+        """Return paginated Unified linear USDT transaction-log rows."""
+        if start_time.tzinfo is None or end_time.tzinfo is None:
+            raise ValueError("start_time and end_time must be timezone-aware")
+        if end_time <= start_time:
+            raise ValueError("end_time must be after start_time")
+        if end_time - start_time > timedelta(days=7):
+            raise ValueError("transaction-log window cannot exceed 7 days")
+
+        cursor: str | None = None
+        entries: list[TransactionLogEntry] = []
+
+        while True:
+            params = {
+                "accountType": "UNIFIED",
+                "category": "linear",
+                "currency": "USDT",
+                "startTime": str(int(start_time.timestamp() * 1000)),
+                "endTime": str(int(end_time.timestamp() * 1000)),
+                "limit": "50",
+            }
+            if cursor:
+                params["cursor"] = cursor
+
+            payload = await self._get(
+                "/v5/account/transaction-log",
+                params=params,
+                authenticated=True,
+            )
+
+            result = payload.get("result")
+            rows = result.get("list") if isinstance(result, dict) else None
+            if not isinstance(rows, list):
+                raise BybitAPIError("Bybit transaction-log response is malformed")
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+
+                raw_time = row.get("transactionTime")
+                parsed_time = self._parse_timestamp_ms(raw_time)
+                if parsed_time is None:
+                    continue
+
+                entries.append(
+                    TransactionLogEntry(
+                        transaction_id=str(row.get("id") or ""),
+                        symbol=str(row.get("symbol") or ""),
+                        category=str(row.get("category") or ""),
+                        side=str(row.get("side") or ""),
+                        transaction_time=parsed_time,
+                        transaction_type=str(row.get("type") or ""),
+                        quantity=self._parse_decimal(row.get("qty")),
+                        trade_price=self._parse_decimal(row.get("tradePrice")),
+                        funding=self._parse_decimal(row.get("funding")) or Decimal("0"),
+                        fee=self._parse_decimal(row.get("fee")) or Decimal("0"),
+                        cash_flow=self._parse_decimal(row.get("cashFlow")) or Decimal("0"),
+                        change=self._parse_decimal(row.get("change")) or Decimal("0"),
+                        cash_balance=self._parse_decimal(row.get("cashBalance")),
+                        order_id=(
+                            str(row.get("orderId"))
+                            if row.get("orderId") not in (None, "")
+                            else None
+                        ),
+                        trade_id=(
+                            str(row.get("tradeId"))
+                            if row.get("tradeId") not in (None, "")
+                            else None
+                        ),
+                    )
+                )
+
+            cursor = (
+                str(result.get("nextPageCursor") or "")
+                if isinstance(result, dict)
+                else ""
+            )
+            if not cursor:
+                break
+
+        entries.sort(key=lambda item: item.transaction_time)
+        return tuple(entries)
 
     async def get_closed_trades(self, limit: int = 100) -> tuple[ClosedTrade, ...]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:

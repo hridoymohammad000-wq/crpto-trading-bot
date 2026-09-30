@@ -1,6 +1,7 @@
-﻿import asyncio
+import asyncio
+import inspect
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
@@ -33,6 +34,7 @@ class ReconciliationResult(BaseModel):
     positions: dict[str, Any]
     orders: dict[str, Any]
     local_state: dict[str, Any]
+    wallet_activity: dict[str, Any] = Field(default_factory=dict)
 
 
 class ReconciliationEngine:
@@ -77,6 +79,7 @@ class ReconciliationEngine:
             positions_data: dict[str, Any] = {}
             orders_data: dict[str, Any] = {}
             local_data: dict[str, Any] = {}
+            wallet_activity_data: dict[str, Any] = {}
 
             try:
                 # 1. Fetch Bybit data
@@ -99,6 +102,90 @@ class ReconciliationEngine:
                         local_state={}
                     )
                     return
+
+                # Fetch recent exchange wallet activity independently.
+                # This is read-only and is used for exact fee/funding/cash-flow
+                # reconciliation. Tests/mocks without the async method skip it.
+                transaction_method = getattr(
+                    self._exchange,
+                    "get_transaction_log",
+                    None,
+                )
+
+                if (
+                    transaction_method is not None
+                    and inspect.iscoroutinefunction(transaction_method)
+                ):
+                    try:
+                        activity_end = datetime.now(timezone.utc)
+                        activity_start = activity_end - timedelta(hours=72)
+
+                        transaction_rows = await transaction_method(
+                            start_time=activity_start,
+                            end_time=activity_end,
+                        )
+
+                        transactions = [
+                            {
+                                "id": row.transaction_id,
+                                "symbol": row.symbol,
+                                "category": row.category,
+                                "side": row.side,
+                                "transaction_time": row.transaction_time.isoformat(),
+                                "type": row.transaction_type,
+                                "quantity": (
+                                    float(row.quantity)
+                                    if row.quantity is not None
+                                    else None
+                                ),
+                                "trade_price": (
+                                    float(row.trade_price)
+                                    if row.trade_price is not None
+                                    else None
+                                ),
+                                "funding": float(row.funding),
+                                "fee": float(row.fee),
+                                "cash_flow": float(row.cash_flow),
+                                "change": float(row.change),
+                                "cash_balance": (
+                                    float(row.cash_balance)
+                                    if row.cash_balance is not None
+                                    else None
+                                ),
+                                "order_id": row.order_id,
+                                "trade_id": row.trade_id,
+                            }
+                            for row in transaction_rows
+                        ]
+
+                        wallet_activity_data = {
+                            "source": "BYBIT_TRANSACTION_LOG",
+                            "window_start": activity_start.isoformat(),
+                            "window_end": activity_end.isoformat(),
+                            "transactions": transactions,
+                            "totals": {
+                                "fee": sum(
+                                    row["fee"]
+                                    for row in transactions
+                                ),
+                                "funding": sum(
+                                    row["funding"]
+                                    for row in transactions
+                                ),
+                                "cash_flow": sum(
+                                    row["cash_flow"]
+                                    for row in transactions
+                                ),
+                                "change": sum(
+                                    row["change"]
+                                    for row in transactions
+                                ),
+                            },
+                        }
+                    except Exception as exc:
+                        warnings.append(
+                            f"Bybit transaction-log unavailable: {exc}"
+                        )
 
                 # Build wallet data
                 wallet_data = {
@@ -255,7 +342,8 @@ class ReconciliationEngine:
                     wallet=wallet_data,
                     positions=positions_data,
                     orders=orders_data,
-                    local_state=local_data
+                    local_state=local_data,
+                    wallet_activity=wallet_activity_data,
                 )
 
             except Exception as exc:

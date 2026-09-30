@@ -86,35 +86,9 @@ export function useDashboard() {
       };
     });
 
-    // Update PnL for any WebSocket-tracked open positions for this symbol
-    setWsPositions((prevPositions) => {
-      let hasChange = false;
-      const updated = prevPositions.map((pos) => {
-        if (pos.symbol === sym) {
-          hasChange = true;
-          const currentPrice = payload.price;
-          const entry = pos.entry || 0;
-          const qty = pos.quantity || 0;
-          if (!entry || !qty) return { ...pos, current: currentPrice };
-          const isLong = pos.side === 'LONG';
-          const pnl = isLong
-            ? (currentPrice - entry) * qty
-            : (entry - currentPrice) * qty;
-          const pnlPct = (pnl / (entry * qty)) * 100 * (pos.leverage || 1);
-          return {
-            ...pos,
-            current: currentPrice,
-            unrealizedPnl: Math.round(pnl * 100) / 100,
-            pnlPercentage: Math.round(pnlPct * 100) / 100,
-          };
-        }
-        return pos;
-      });
-      return hasChange ? updated : prevPositions;
-    });
-
-
-    // Also store the live price for ticking REST-loaded positions
+    // Keep ticker prices for charts/market display only.
+    // Do not recalculate open-position PnL from last-traded price:
+    // Bybit values positions using mark price.
     setLivePrices((prev) => ({ ...prev, [sym]: payload.price }));
   }, []);
 
@@ -236,30 +210,20 @@ export function useDashboard() {
     autoConnect: true,
   });
 
-  // Merge REST positions and WebSocket positions, then apply live price overrides to all
-  const mergedPositions: Position[] = wsPositions.length > 0
-    ? [...wsPositions, ...positionsData.positions.filter((p) => !wsPositions.some((ws) => ws.id === p.id))]
-    : positionsData.positions;
-
-  // Apply real-time price ticks from WebSocket to any position whose symbol has a live price
-  const displayedPositions: Position[] = mergedPositions.map((pos) => {
-    const livePrice = livePrices[pos.symbol];
-    if (livePrice === undefined || livePrice === pos.current) return pos;
-    const entry = pos.entry || 0;
-    const qty = pos.quantity || 0;
-    if (!entry || !qty) return { ...pos, current: livePrice };
-    const isLong = pos.side === 'LONG';
-    const pnl = isLong
-      ? (livePrice - entry) * qty
-      : (entry - livePrice) * qty;
-    const pnlPct = (pnl / (entry * qty)) * 100 * (pos.leverage || 1);
-    return {
-      ...pos,
-      current: livePrice,
-      unrealizedPnl: Math.round(pnl * 100) / 100,
-      pnlPercentage: Math.round(pnlPct * 100) / 100,
-    };
-  });
+  // Bybit /positions is authoritative for open-position valuation.
+  // It supplies the exchange mark price and unrealised PnL used by Bybit itself.
+  // WebSocket-only positions are retained temporarily until the next REST refresh.
+  const displayedPositions: Position[] = [
+    ...positionsData.positions,
+    ...wsPositions.filter(
+      (ws) =>
+        !positionsData.positions.some(
+          (rest) =>
+            rest.id === ws.id ||
+            (rest.symbol === ws.symbol && rest.side === ws.side)
+        )
+    ),
+  ];
 
 
   // Signals feed: merges WebSocket signals on top of REST signals
@@ -290,8 +254,9 @@ export function useDashboard() {
     : (accountData.data as any)?.available_balance !== undefined
     ? (accountData.data as any).available_balance
     : accountData.data?.availableBalance;
-  // Daily PnL is REALIZED closed-trade PnL for the browser's current calendar day.
-  // Do not use equity-wallet difference / unrealized PnL here; that was the old mismatch.
+  // Daily wallet PnL uses Bybit Transaction Log when available:
+  // change = cashFlow + funding - fee.
+  // The browser's local calendar day defines "today".
   const today = new Date();
   const isSameLocalDay = (value?: string) => {
     if (!value) return false;
@@ -303,14 +268,85 @@ export function useDashboard() {
   };
   const realizedToday = tradesData.allTrades
     .filter((trade) => isSameLocalDay(trade.closedAtISO))
-    .reduce((sum, trade) => sum + (Number.isFinite(trade.pnl) ? trade.pnl : 0), 0);
-  const realDailyPnl = tradesData.isLoading && tradesData.allTrades.length === 0
-    ? undefined
-    : Math.round(realizedToday * 100) / 100;
-  const estimatedStartBalance = realBalance !== undefined ? realBalance - realizedToday : undefined;
-  const realDailyPnlPercentage = estimatedStartBalance && estimatedStartBalance !== 0
-    ? (realizedToday / estimatedStartBalance) * 100
-    : undefined;
+    .reduce(
+      (sum, trade) =>
+        sum + (Number.isFinite(trade.pnl) ? trade.pnl : 0),
+      0
+    );
+
+  const walletTransactions: any[] = Array.isArray(
+    reconData.data?.wallet_activity?.transactions
+  )
+    ? reconData.data.wallet_activity.transactions
+    : [];
+
+  const todayWalletTransactions = walletTransactions.filter(
+    (row) =>
+      isSameLocalDay(row?.transaction_time) &&
+      row?.category === 'linear' &&
+      ['TRADE', 'SETTLEMENT'].includes(String(row?.type || '').toUpperCase())
+  );
+
+  const hasWalletActivitySource =
+    reconData.data?.wallet_activity?.source === 'BYBIT_TRANSACTION_LOG';
+
+  const walletNetToday = todayWalletTransactions.reduce(
+    (sum, row) => sum + Number(row?.change || 0),
+    0
+  );
+
+  const walletFeesToday = todayWalletTransactions.reduce(
+    (sum, row) =>
+      String(row?.type || '').toUpperCase() === 'TRADE'
+        ? sum + Number(row?.fee || 0)
+        : sum,
+    0
+  );
+
+  const walletFundingToday = todayWalletTransactions.reduce(
+    (sum, row) => sum + Number(row?.funding || 0),
+    0
+  );
+
+  const walletCashFlowToday = todayWalletTransactions.reduce(
+    (sum, row) => sum + Number(row?.cash_flow || 0),
+    0
+  );
+
+  const selectedDailyPnl = hasWalletActivitySource
+    ? walletNetToday
+    : realizedToday;
+
+  const realDailyPnl =
+    !hasWalletActivitySource &&
+    tradesData.isLoading &&
+    tradesData.allTrades.length === 0
+      ? undefined
+      : Math.round(selectedDailyPnl * 100) / 100;
+
+  const estimatedStartBalance =
+    realBalance !== undefined
+      ? realBalance - selectedDailyPnl
+      : undefined;
+
+  const realDailyPnlPercentage =
+    estimatedStartBalance && estimatedStartBalance !== 0
+      ? (selectedDailyPnl / estimatedStartBalance) * 100
+      : undefined;
+
+  const dailyWalletReconciliation = {
+    source: hasWalletActivitySource
+      ? 'Bybit Transaction Log'
+      : 'Closed Trade Fallback',
+    walletNet: Math.round(walletNetToday * 10000) / 10000,
+    fees: Math.round(walletFeesToday * 10000) / 10000,
+    funding: Math.round(walletFundingToday * 10000) / 10000,
+    cashFlow: Math.round(walletCashFlowToday * 10000) / 10000,
+    closedTradePnl: Math.round(realizedToday * 10000) / 10000,
+    adjustment:
+      Math.round((walletNetToday - realizedToday) * 10000) / 10000,
+    transactionCount: todayWalletTransactions.length,
+  };
 
   const accountInfo: AccountSummary = {
     // Explicit offline-safe defaults — no fabricated values
@@ -377,5 +413,6 @@ export function useDashboard() {
     systemNotification,
     clearSystemNotification: () => setSystemNotification(null),
     reconData,
+    dailyWalletReconciliation,
   };
 }
