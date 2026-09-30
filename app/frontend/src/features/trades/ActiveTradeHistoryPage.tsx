@@ -25,9 +25,11 @@ interface Props {
   hasActiveFilters: boolean;
 }
 
-function money(value: number): string {
-  const sign = value > 0 ? '+' : '';
-  return `${sign}$${value.toFixed(2)}`;
+function money(value: number | string | null | undefined): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '$0.00';
+  const sign = numeric > 0 ? '+' : '';
+  return `${sign}$${numeric.toFixed(2)}`;
 }
 
 export const ActiveTradeHistoryPage: React.FC<Props> = (props) => {
@@ -288,3 +290,5 @@ export const ActiveTradeHistoryPage: React.FC<Props> = (props) => {
     </div>
   );
 };
+
+

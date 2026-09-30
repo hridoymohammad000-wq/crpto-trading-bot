@@ -1,53 +1,89 @@
-import { apiClient } from './client';
+﻿import { apiClient } from './client';
 import { RequestOptions } from './types';
 import { Trade, TradingSymbol } from '../types';
 
 interface BackendClosedTrade {
-  order_id: string;
+  order_id?: string | null;
   symbol: TradingSymbol;
   side: 'LONG' | 'SHORT';
-  quantity: number;
-  entry_price?: number;
-  exit_price?: number;
-  realized_pnl: number;
-  created_at?: string;
-  updated_at?: string;
+  quantity: number | string;
+  entry_price?: number | string | null;
+  exit_price?: number | string | null;
+  realized_pnl: number | string;
+  created_at?: string | null;
+  updated_at?: string | null;
   strategy?: string | null;
-  stop_loss?: number | null;
-  take_profit?: number | null;
+  stop_loss?: number | string | null;
+  take_profit?: number | string | null;
   exit_reason?: string | null;
   diagnostic_reason?: string | null;
 }
 
-export async function getTrades(options?: RequestOptions): Promise<Trade[]> {
-  const backendTrades = await apiClient.get<BackendClosedTrade[]>('/trades/persisted', options);
-  
-  return backendTrades.map(bt => {
-    let result: 'Win' | 'Loss' | 'Breakeven' = 'Breakeven';
-    if (bt.realized_pnl > 0) result = 'Win';
-    else if (bt.realized_pnl < 0) result = 'Loss';
+function num(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
-    const pnlPercentage = bt.entry_price 
-      ? (bt.realized_pnl / (bt.entry_price * bt.quantity)) * 100 
-      : 0;
+export async function getTrades(options?: RequestOptions): Promise<Trade[]> {
+  const backendTrades = await apiClient.get<BackendClosedTrade[]>(
+    '/trades/persisted',
+    options
+  );
+
+  return backendTrades.map((bt, index) => {
+    const quantity = num(bt.quantity);
+    const entry = num(bt.entry_price);
+    const exit = num(bt.exit_price);
+    const pnl = num(bt.realized_pnl);
+    const sl = num(bt.stop_loss);
+    const tp = num(bt.take_profit);
+
+    let result: 'Win' | 'Loss' | 'Breakeven' = 'Breakeven';
+
+    if (pnl > 0) result = 'Win';
+    else if (pnl < 0) result = 'Loss';
+
+    const positionCost = entry * quantity;
+
+    const pnlPercentage =
+      positionCost !== 0
+        ? (pnl / positionCost) * 100
+        : 0;
+
+    const closedAtISO =
+      bt.updated_at ||
+      bt.created_at ||
+      undefined;
 
     return {
-      id: bt.order_id || Math.random().toString(),
+      id:
+        bt.order_id ||
+        `${bt.symbol}-${closedAtISO || 'unknown'}-${index}`,
+
       symbol: bt.symbol,
       side: bt.side,
-      strategy: (bt.strategy || 'EMA + RSI') as any,
-      timeframe: '5m', // fallback
-      entry: bt.entry_price || 0,
-      exit: bt.exit_price || 0,
-      sl: bt.stop_loss || 0,
-      tp: bt.take_profit || 0,
-      pnl: bt.realized_pnl,
-      pnlPercentage: pnlPercentage,
+
+      strategy: (bt.strategy || 'EMA + RSI') as Trade['strategy'],
+      timeframe: '5m',
+
+      entry,
+      exit,
+      sl,
+      tp,
+
+      pnl,
+      pnlPercentage,
+
       rr: '-',
       duration: 'Closed',
       result,
-      closedAt: (bt.updated_at || bt.created_at) ? new Date(bt.updated_at || bt.created_at!).toLocaleString() : 'Unknown',
-      closedAtISO: bt.updated_at || bt.created_at,
+
+      closedAt: closedAtISO
+        ? new Date(closedAtISO).toLocaleString()
+        : 'Unknown',
+
+      closedAtISO,
+
       exitReason: bt.exit_reason || undefined,
       diagnosticReason: bt.diagnostic_reason || undefined,
     };
