@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -128,7 +128,7 @@ export const PerformanceCards: React.FC<PerformanceCardsProps> = ({
         <MetricCard
           id="metric-profit-factor"
           label="Profit Factor"
-          value={metrics.profitFactor.toFixed(2)}
+          value={Number(metrics.profitFactor ?? 0).toFixed(2)}
           change="Target: > 1.80"
           changeType="positive"
           icon={<Award size={14} />}
@@ -188,3 +188,4 @@ export const PerformanceCards: React.FC<PerformanceCardsProps> = ({
     </div>
   );
 };
+

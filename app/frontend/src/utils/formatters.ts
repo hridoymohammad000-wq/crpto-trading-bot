@@ -1,22 +1,32 @@
+﻿/**
+ * Convert API/runtime numeric values safely.
+ */
+function safeNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * Format numeric currency values with configurable decimals and sign prefix
  */
 export function formatCurrency(
-  value: number | null | undefined,
+  value: number | string | null | undefined,
   options?: {
     decimals?: number;
     showSign?: boolean;
     currencySymbol?: string;
   }
 ): string {
-  if (value === null || value === undefined || !isFinite(value)) return '—';
-  
+  const numericValue = safeNumber(value);
+  if (numericValue === null) return '—';
+
   const decimals = options?.decimals ?? 2;
   const showSign = options?.showSign ?? false;
   const symbol = options?.currencySymbol ?? '$';
 
-  const sign = showSign && value > 0 ? '+' : value < 0 ? '-' : '';
-  const absValue = Math.abs(value);
+  const sign = showSign && numericValue > 0 ? '+' : numericValue < 0 ? '-' : '';
+  const absValue = Math.abs(numericValue);
+
   const formattedNumber = absValue.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -26,48 +36,47 @@ export function formatCurrency(
 }
 
 /**
- * Format percentage values with configurable decimals and sign prefix
+ * Format percentage values safely.
  */
 export function formatPercentage(
-  value: number | null | undefined,
+  value: number | string | null | undefined,
   options?: {
     decimals?: number;
     showSign?: boolean;
   }
 ): string {
-  if (value === null || value === undefined || !isFinite(value)) return '—';
+  const numericValue = safeNumber(value);
+  if (numericValue === null) return '—';
 
   const decimals = options?.decimals ?? 2;
   const showSign = options?.showSign ?? false;
 
-  const sign = showSign && value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(decimals)}%`;
+  const sign = showSign && numericValue > 0 ? '+' : '';
+  return `${sign}${numericValue.toFixed(decimals)}%`;
 }
-
 
 /**
  * Format cryptocurrency prices cleanly
  */
-export function formatPrice(price: number | null | undefined, decimals: number = 2): string {
-  if (price === null || price === undefined) return 'Unavailable';
-  return price.toLocaleString('en-US', {
+export function formatPrice(
+  price: number | string | null | undefined,
+  decimals: number = 2
+): string {
+  const numericPrice = safeNumber(price);
+  if (numericPrice === null) return 'Unavailable';
+
+  return numericPrice.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
-/**
- * Get standard Tailwind text color class based on profit/loss value
- */
 export function getPnlColor(value: number): string {
   if (value > 0) return 'text-emerald-400';
   if (value < 0) return 'text-rose-400';
   return 'text-slate-400';
 }
 
-/**
- * Get standard Tailwind badge style class based on profit/loss value
- */
 export function getPnlBadgeClasses(value: number): string {
   if (value > 0) return 'bg-emerald-950/60 text-emerald-400 border-emerald-800/50';
   if (value < 0) return 'bg-rose-950/60 text-rose-400 border-rose-800/50';
