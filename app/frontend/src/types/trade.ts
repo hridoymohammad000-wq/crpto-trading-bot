@@ -21,4 +21,6 @@ export interface Trade {
   result: TradeResult;
   closedAt: string;
   closedAtISO?: string;
+  exitReason?: string;
+  diagnosticReason?: string;
 }

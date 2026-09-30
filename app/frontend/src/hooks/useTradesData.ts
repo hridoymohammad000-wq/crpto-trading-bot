@@ -8,6 +8,8 @@ import {
 } from './useTradeFilters';
 
 export interface UseTradesDataReturn {
+  // Full unfiltered ledger, used for account/day calculations.
+  allTrades: Trade[];
   // Current visible trades (either paginated or filtered)
   trades: Trade[];
   // Total count of trades matching filters
@@ -146,6 +148,7 @@ export function useTradesData(): UseTradesDataReturn {
   }, []);
 
   return {
+    allTrades: rawTrades,
     trades: paginatedTrades,
     totalMatchingCount,
     isLoading,
