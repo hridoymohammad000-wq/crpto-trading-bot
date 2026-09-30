@@ -31,6 +31,7 @@ class StrategyService:
         *,
         entry_candles: tuple[Candle, ...] | None = None,
         trend_candles: tuple[Candle, ...] | None = None,
+        htf_candles: tuple[Candle, ...] | None = None,
     ) -> StrategyEvaluation:
         entry = entry_candles
         if entry is None:
@@ -44,5 +45,14 @@ class StrategyService:
                 symbol, "15m", limit=200, closed_only=True
             )
 
-        return self._strategy.evaluate(symbol, entry, trend)
+        htf = htf_candles
+        if htf is None:
+            try:
+                htf = await self._market_data.fetch_candles(
+                    symbol, "1H", limit=60, closed_only=True
+                )
+            except Exception:
+                htf = ()
+
+        return self._strategy.evaluate(symbol, entry, trend, htf)
 

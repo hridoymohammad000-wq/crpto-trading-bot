@@ -269,6 +269,7 @@ def test_strategy_service_uses_market_data_abstraction_and_closed_only() -> None
     assert provider.calls == [
         ("BTCUSDT", "5m", 200, True),
         ("BTCUSDT", "15m", 200, True),
+        ("BTCUSDT", "1H", 60, True),
     ]
 
 
@@ -368,3 +369,4 @@ def test_diagnostic_endpoint_rejects_unsupported_symbol() -> None:
         "/strategy/evaluate", params={"symbol": "BTCUSD"}
     )
     assert response.status_code == 422
+

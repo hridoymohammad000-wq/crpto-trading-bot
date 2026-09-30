@@ -67,6 +67,7 @@ class EmaRsiAdxMomentumStrategy:
         symbol: SupportedSymbol,
         entry_candles: tuple[Candle, ...],
         trend_candles: tuple[Candle, ...],
+        htf_candles: tuple[Candle, ...] | None = None,
     ) -> StrategyEvaluation:
         entry = self._closed_for(entry_candles, symbol, ENTRY_TIMEFRAME)
         trend = self._closed_for(trend_candles, symbol, TREND_TIMEFRAME)
@@ -102,6 +103,10 @@ class EmaRsiAdxMomentumStrategy:
                     else len(entry) - 1 - latest_cross[0]
                 ),
             )
+        if htf_candles is not None:
+            htf_reasons = self._htf_1h_reasons(symbol, snapshot.side, htf_candles)
+            if htf_reasons:
+                return self._snapshot_result(snapshot, htf_reasons)
         return self.evaluate_snapshot(snapshot)
 
     def evaluate_snapshot(self, snapshot: StrategySnapshot) -> StrategyEvaluation:
@@ -125,7 +130,7 @@ class EmaRsiAdxMomentumStrategy:
         atr_value = indicators.atr
         assert all(value is not None for value in values)
         reasons: list[NoSignalReason] = []
-        if snapshot.crossover_age_candles > 5:
+        if snapshot.crossover_age_candles > 2:
             reasons.append(NoSignalReason.ENTRY_WINDOW_EXPIRED)
 
         if snapshot.side == SignalSide.BUY:
@@ -181,6 +186,28 @@ class EmaRsiAdxMomentumStrategy:
         self._emitted_setups.add(setup_key)
         return self._snapshot_result(snapshot, (), signal)
 
+    @staticmethod
+    def _htf_1h_reasons(
+        symbol: SupportedSymbol,
+        side: SignalSide,
+        htf_candles: tuple[Candle, ...],
+    ) -> tuple[NoSignalReason, ...]:
+        """1h gate: EMA9/EMA21 aligned with the side and last 1h close on the same side of EMA21."""
+        candles = EmaRsiAdxMomentumStrategy._closed_for(htf_candles, symbol, "1H")
+        if len(candles) < 22:
+            return (NoSignalReason.INSUFFICIENT_DATA,)
+        closes = tuple(candle.close for candle in candles)
+        fast = ema(closes, 9)[-1]
+        slow = ema(closes, 21)[-1]
+        if fast is None or slow is None:
+            return (NoSignalReason.INSUFFICIENT_DATA,)
+        last = closes[-1]
+        if side == SignalSide.BUY:
+            ok = fast > slow and last > slow
+        else:
+            ok = fast < slow and last < slow
+        return () if ok else (NoSignalReason.HTF_1H_FAILED,)
+
     def _build_snapshot(
         self,
         symbol: SupportedSymbol,
@@ -192,7 +219,7 @@ class EmaRsiAdxMomentumStrategy:
             return None
         cross_index, side = latest_cross
         age = len(entry) - 1 - cross_index
-        if age > 5:
+        if age > 2:
             return None
             
         # Check trend structure
