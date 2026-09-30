@@ -63,27 +63,27 @@
 
 ## Task 2 — Today Trade Summary
 
-- [ ] Total trades today
-- [ ] Open trades
-- [ ] Closed trades
-- [ ] SL hits
-- [ ] TP hits
-- [ ] Wins
-- [ ] Losses
-- [ ] Realized PnL USDT
-- [ ] Win Rate
-- [ ] Gross Profit
-- [ ] Gross Loss
-- [ ] Average Win
-- [ ] Average Loss
-- [ ] Profit Factor
-- [ ] Best Trade
-- [ ] Worst Trade
-- [ ] Header Daily PnL and Today Summary use same source
-- [ ] Today / 7D / Custom still work
-- [ ] Tests/build/UI verify
-- [ ] Commit + push
-- [ ] Mark Task 2 complete
+- [x] Total trades today
+- [x] Open trades
+- [x] Closed trades
+- [x] SL hits
+- [x] TP hits
+- [x] Wins
+- [x] Losses
+- [x] Realized PnL USDT
+- [x] Win Rate
+- [x] Gross Profit
+- [x] Gross Loss
+- [x] Average Win
+- [x] Average Loss
+- [x] Profit Factor
+- [x] Best Trade
+- [x] Worst Trade
+- [x] Header Daily PnL and Today Summary use same source
+- [x] Today / 7D / Custom still work
+- [x] Tests/build/UI verify
+- [x] Commit + push
+- [x] Mark Task 2 complete
 
 ---
 
@@ -196,5 +196,6 @@
 - [ ] Latest commit pushed to main
 - [ ] Vercel production updated
 - [ ] Production verified
+
 
 
