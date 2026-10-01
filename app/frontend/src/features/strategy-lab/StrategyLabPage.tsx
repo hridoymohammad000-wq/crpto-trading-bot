@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, AlertCircle, BarChart3, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 
 interface LabWorker { name: string; last_signal_count: number; last_evaluation_count: number; }
@@ -46,7 +46,7 @@ export const StrategyLabPage: React.FC = () => {
   const [evaluations, setEvaluations] = useState<Record<string, LabEvaluation[]>>({});
   const [history, setHistory] = useState<LabHistorySignal[]>([]);
   const [performance, setPerformance] = useState<StrategyPerformance[]>([]);
-  const [symbols, setSymbols] = useState('BTCUSDT,ETHUSDT,SOLUSDT');
+  const [symbols, setSymbols] = useState('BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,AVAXUSDT,LINKUSDT,DOTUSDT');
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [marking, setMarking] = useState(false);
