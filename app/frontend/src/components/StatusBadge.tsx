@@ -87,6 +87,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       Approved: 'bg-indigo-950/60 text-indigo-300 border-indigo-700/60',
       Executed: 'bg-emerald-950/60 text-emerald-400 border-emerald-700/60',
       Rejected: 'bg-slate-800/60 text-slate-400 border-slate-700/60',
+      Expired: 'bg-orange-950/60 text-orange-400 border-orange-800/60',
     };
 
     return (

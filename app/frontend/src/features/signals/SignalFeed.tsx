@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Radio, RefreshCw } from 'lucide-react';
+import { AlertCircle, Radio, RefreshCw } from 'lucide-react';
 import { EmptyState } from '../../components/EmptyState';
 import { SignalFeedSkeleton } from '../../components/LoadingSkeleton';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -27,10 +27,41 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
 }) => {
   if (isLoading) return <SignalFeedSkeleton />;
 
-  // Rejected items remain available to backend diagnostics but are intentionally
-  // removed from the actionable user-facing feed.
-  const visibleSignals = signals.filter((signal) => signal.status !== 'Rejected');
-  const actionableSignals = visibleSignals.filter((signal) => !signal.isExpired && signal.status !== 'Expired');
+  const recentSignals = signals.slice(0, 50);
+
+  const actionableSignals = recentSignals.filter(
+    (signal) => !signal.isExpired && signal.status !== 'Expired' && signal.status !== 'Rejected' && signal.status !== 'Executed'
+  );
+
+  const renderCard = (sig: Signal) => (
+    <article key={sig.id} id={`card-signal-${sig.id}`} className="rounded-lg border border-slate-800 p-3 font-mono shadow-sm bg-slate-950/60">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-100">{sig.symbol}</span>
+            <StatusBadge type="side" value={sig.side} size="xs" />
+          </div>
+          <div className="mt-1 text-[10px] text-slate-500">{sig.age} &bull; {sig.timestamp}</div>
+        </div>
+        <StatusBadge type="signal-status" value={sig.status} size="xs" />
+      </div>
+
+      <div className="mt-3 flex items-center justify-between text-[11px]">
+        <span className="rounded border border-slate-700/60 bg-slate-800/70 px-1.5 py-0.5 text-slate-300">{sig.strategy}</span>
+        <span className="text-slate-400">TF {sig.timeframe}</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+        <div className="rounded bg-slate-900 p-2"><div className="text-slate-500">Entry</div><div className="mt-0.5 font-semibold text-slate-100">{formatPrice(sig.entry)}</div></div>
+        <div className="rounded bg-slate-900 p-2"><div className="text-slate-500">SL</div><div className="mt-0.5 font-semibold text-rose-400">{sig.sl ? formatPrice(sig.sl) : '-'}</div></div>
+        <div className="rounded bg-slate-900 p-2"><div className="text-slate-500">TP</div><div className="mt-0.5 font-semibold text-emerald-400">{sig.tp ? formatPrice(sig.tp) : '-'}</div></div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2 text-[11px] text-slate-400">
+        <span>Confidence</span><strong className="text-sky-400">{sig.confidence}%</strong>
+      </div>
+    </article>
+  );
 
   return (
     <div id="panel-signals" className={`bg-slate-900/80 border border-slate-800 rounded-md overflow-hidden flex flex-col ${className}`}>
@@ -50,55 +81,27 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
               <RefreshCw size={11} className={isLoading ? 'animate-spin' : ''} />
             </button>
           )}
-          <span className="text-[10px] font-mono text-slate-400 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/60">{actionableSignals.length} Actionable / {visibleSignals.length} Total</span>
+          <span className="text-[10px] font-mono text-slate-400 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/60">{actionableSignals.length} Actionable / {recentSignals.length} Total</span>
         </div>
       </div>
 
       {isError && errorMessage && (
         <div className="px-3 py-1.5 bg-amber-950/20 border-b border-amber-800/30 flex items-center gap-1.5 text-[11px] font-mono text-amber-300/90">
-          <AlertTriangle size={12} className="shrink-0 text-amber-400" /><span>{errorMessage}</span>
+          <AlertCircle size={12} className="shrink-0 text-amber-400" /><span>{errorMessage}</span>
         </div>
       )}
 
       {actionableSignals.length === 0 ? (
         <EmptyState
           title={isError ? 'Unable to load signals' : 'No actionable signals right now.'}
-          description={isError ? (errorMessage || 'Unable to load signal data.') : 'Rejected and expired signals are hidden. New/approved/executed signals will appear here.'}
+          description={isError ? (errorMessage || 'Unable to load signal data.') : 'All previous signals have expired and are hidden from this page. Waiting for new trading opportunities...'}
           icon={isError ? 'alert' : 'inbox'}
           actionLabel={onRetry ? 'Retry Fetch' : undefined}
           onAction={onRetry}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-3">
-          {actionableSignals.map((sig) => (
-            <article key={sig.id} id={`card-signal-${sig.id}`} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 font-mono shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-100">{sig.symbol}</span>
-                    <StatusBadge type="side" value={sig.side} size="xs" />
-                  </div>
-                  <div className="mt-1 text-[10px] text-slate-500">{sig.age} • {sig.timestamp}</div>
-                </div>
-                <StatusBadge type="signal-status" value={sig.status} size="xs" />
-              </div>
-
-              <div className="mt-3 flex items-center justify-between text-[11px]">
-                <span className="rounded border border-slate-700/60 bg-slate-800/70 px-1.5 py-0.5 text-slate-300">{sig.strategy}</span>
-                <span className="text-slate-400">TF {sig.timeframe}</span>
-              </div>
-
-              <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
-                <div className="rounded bg-slate-900 p-2"><div className="text-slate-500">Entry</div><div className="mt-0.5 font-semibold text-slate-100">{formatPrice(sig.entry)}</div></div>
-                <div className="rounded bg-slate-900 p-2"><div className="text-slate-500">SL</div><div className="mt-0.5 font-semibold text-rose-400">{sig.sl ? formatPrice(sig.sl) : '-'}</div></div>
-                <div className="rounded bg-slate-900 p-2"><div className="text-slate-500">TP</div><div className="mt-0.5 font-semibold text-emerald-400">{sig.tp ? formatPrice(sig.tp) : '-'}</div></div>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2 text-[11px] text-slate-400">
-                <span>Confidence</span><strong className="text-sky-400">{sig.confidence}%</strong>
-              </div>
-            </article>
-          ))}
+          {actionableSignals.map(s => renderCard(s))}
         </div>
       )}
     </div>
