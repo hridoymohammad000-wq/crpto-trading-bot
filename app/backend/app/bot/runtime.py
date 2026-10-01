@@ -42,6 +42,7 @@ class BotRuntime:
         scanner_engine: ScannerEngine | None = None,
         risk_service: RiskService | None = None,
         execution_service: ExecutionService | None = None,
+        position_manager: PositionManager | None = None,
         activity_repository: ActivityRepository | None = None,
         activity_service: ActivityService | None = None,
         realtime_hub: RealtimeHub | None = None,
@@ -63,6 +64,7 @@ class BotRuntime:
         self._scanner_engine = scanner_engine
         self._risk_service = risk_service
         self._execution_service = execution_service
+        self._position_manager = position_manager
         self._activity_repository = activity_repository
         self._activity_service = activity_service
         self._realtime_hub = realtime_hub
@@ -412,38 +414,45 @@ class BotRuntime:
                         state.execution_allowed = False
                         state.reason_codes = ["RECONCILIATION_MISMATCH"]
                     
-                    # Fetch candles for tracking
+                    # Fetch the scanner's closed-candle pipeline: 1H trend,
+                    # 15m setup/confirmation, then 5m entry.
+                    raw_1h = await _timed_await(f"fetch_1h_{symbol}", self._strategy_service._market_data.fetch_candles(symbol, "1H", limit=60, closed_only=True), 10.0)
                     raw_15m = await _timed_await(f"fetch_15m_{symbol}", self._strategy_service._market_data.fetch_candles(symbol, "15m", limit=30, closed_only=True), 10.0)
                     raw_5m = await _timed_await(f"fetch_5m_{symbol}", self._strategy_service._market_data.fetch_candles(symbol, "5m", limit=200, closed_only=True), 10.0)
+                    c_1h = tuple(candle for candle in raw_1h if candle.is_closed)
                     c_15m = tuple(candle for candle in raw_15m if candle.is_closed)
                     c_5m = tuple(candle for candle in raw_5m if candle.is_closed)
                     
                     # Check new candles
+                    new_1h = bool(c_1h) and (state.last_processed_1h != c_1h[-1].start_time)
                     new_15m = bool(c_15m) and (state.last_processed_15m != c_15m[-1].start_time)
                     new_5m = bool(c_5m) and (state.last_processed_5m != c_5m[-1].start_time)
                     
                     # State Machine Pipeline
                     if state.state != SetupState.COOLDOWN:
-                        if c_15m and (new_15m or state.state == SetupState.DISCOVERED):
-                            PipelineStateMachine.evaluate_15m_context(state, c_15m)
+                        if c_1h and (new_1h or state.state == SetupState.DISCOVERED):
+                            PipelineStateMachine.evaluate_1h_trend(state, c_1h)
+
+                        if c_15m and state.trend_1h.get("trend_valid") and (new_15m or not state.setup_15m):
+                            PipelineStateMachine.evaluate_15m_setup(state, c_15m)
                             
                         # Strategy authority is 5m. Evaluate exactly once per newly
-                        # closed 5m candle; a new 15m context alone must not trigger
+                        # closed 5m candle; a new higher-timeframe candle alone must not trigger
                         # an entry evaluation. TRIGGERED is re-evaluated on a later
                         # 5m close so stale setups can be refreshed/invalidated.
-                        if c_5m and state.state in (SetupState.WATCHING, SetupState.ARMED, SetupState.TRIGGERED) and new_5m:
-                            evaluation = await _timed_await(f"evaluate_{symbol}", self._strategy_service.evaluate(symbol, entry_candles=c_5m, trend_candles=c_15m), 15.0)
-                            PipelineStateMachine.evaluate_5m_setup(state, evaluation)
+                        if c_5m and state.setup_15m.get("setup_valid") and state.state in (SetupState.WATCHING, SetupState.ARMED, SetupState.TRIGGERED) and new_5m:
+                            evaluation = await _timed_await(f"evaluate_{symbol}", self._strategy_service.evaluate(symbol, entry_candles=c_5m, trend_candles=c_15m, htf_candles=c_1h), 15.0)
+                            PipelineStateMachine.evaluate_5m_entry(state, evaluation)
                             if state.state == SetupState.ARMED:
                                 if state.execution_allowed:
-                                    PipelineStateMachine.arm_strategy_authority_trigger(state)
+                                    PipelineStateMachine.confirm_5m_entry(state)
                                 else:
                                     state.state = SetupState.INVALIDATED
                                     state.reason_codes = ["BLOCKED_BY_EXECUTION_ALLOWLIST"]
                                     state.execution_diagnostics["execution_status"] = "BLOCKED_BY_EXECUTION_ALLOWLIST"
                         
                     is_triggered = state.state == SetupState.TRIGGERED
-                    signal = state.trigger_1m.get("signal")
+                    signal = state.entry_5m.get("signal")
                     execution_allowed = state.execution_allowed
                 else:
                     # Fallback for old tests without scanner engine
@@ -459,7 +468,7 @@ class BotRuntime:
                     if self._scanner_engine is None:
                         signal = evaluation.signal
                     else:
-                        signal = state.trigger_1m.get("signal")
+                        signal = state.entry_5m.get("signal")
                         
                     if signal and self._risk_service is not None:
                         risk_decision = await _timed_await(f"risk_{symbol}", self._risk_service.evaluate(signal), 10.0)
@@ -648,6 +657,13 @@ class BotRuntime:
         self._last_heartbeat = self._last_completed_cycle_time
         self._cycle_count += 1
         self._last_error = "; ".join(errors) if errors else None
+        
+        if self._position_manager:
+            try:
+                await self._position_manager.manage_open_positions()
+            except Exception as exc:
+                logger.error(f"Position management failed: {exc}")
+
         self._cycle_in_progress = False
         self._current_cycle_stage = None
 

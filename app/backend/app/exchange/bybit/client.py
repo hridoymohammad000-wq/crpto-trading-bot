@@ -1133,3 +1133,25 @@ class BybitDemoClient(ExchangeClient):
 
 
 
+
+    async def set_trading_stop(
+        self,
+        *,
+        symbol: str,
+        stop_loss: Decimal | None = None,
+        take_profit: Decimal | None = None,
+        position_idx: int = 0,
+    ) -> None:
+        body: dict[str, object] = {
+            "category": "linear",
+            "symbol": symbol,
+            "positionIdx": position_idx,
+        }
+        if stop_loss is not None:
+            body["stopLoss"] = self._format_decimal(stop_loss)
+            body["tpslMode"] = "Full"
+        if take_profit is not None:
+            body["takeProfit"] = self._format_decimal(take_profit)
+            body["tpslMode"] = "Full"
+
+        await self._post("/v5/position/trading-stop", body=body)

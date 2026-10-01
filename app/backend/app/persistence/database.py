@@ -186,6 +186,19 @@ class PersistenceDatabase:
             updated_at TEXT NOT NULL
         );
 
+        
+        CREATE TABLE IF NOT EXISTS position_management (
+            symbol TEXT PRIMARY KEY,
+            be_triggered BOOLEAN NOT NULL DEFAULT FALSE,
+            be_trigger_price TEXT,
+            be_triggered_at TEXT,
+            original_stop_loss TEXT,
+            current_stop_loss TEXT,
+            be_order_id TEXT,
+            be_status TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        
         CREATE TABLE IF NOT EXISTS persistence_write_probe (
             probe_id INTEGER PRIMARY KEY CHECK (probe_id = 1),
             checked_at TEXT NOT NULL
@@ -1203,3 +1216,57 @@ class PersistenceDatabase:
             )
 
 
+
+    def get_position_management_state(self, symbol: str) -> dict | None:
+        self.initialize()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM position_management WHERE symbol = ?",
+                (symbol,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "symbol": row["symbol"],
+                "be_triggered": bool(row["be_triggered"]),
+                "be_trigger_price": Decimal(row["be_trigger_price"]) if row["be_trigger_price"] else None,
+                "be_triggered_at": row["be_triggered_at"],
+                "original_stop_loss": Decimal(row["original_stop_loss"]) if row["original_stop_loss"] else None,
+                "current_stop_loss": Decimal(row["current_stop_loss"]) if row["current_stop_loss"] else None,
+                "be_order_id": row["be_order_id"],
+                "be_status": row["be_status"],
+                "updated_at": row["updated_at"]
+            }
+
+    def upsert_position_management_state(self, state: dict) -> None:
+        self.initialize()
+        with self._connect() as conn:
+            conn.execute(
+                '''
+                INSERT INTO position_management (
+                    symbol, be_triggered, be_trigger_price, be_triggered_at,
+                    original_stop_loss, current_stop_loss, be_order_id, be_status, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    be_triggered = excluded.be_triggered,
+                    be_trigger_price = excluded.be_trigger_price,
+                    be_triggered_at = excluded.be_triggered_at,
+                    original_stop_loss = excluded.original_stop_loss,
+                    current_stop_loss = excluded.current_stop_loss,
+                    be_order_id = excluded.be_order_id,
+                    be_status = excluded.be_status,
+                    updated_at = excluded.updated_at
+                ''',
+                (
+                    state["symbol"],
+                    int(state["be_triggered"]),
+                    str(state["be_trigger_price"]) if state["be_trigger_price"] is not None else None,
+                    state["be_triggered_at"],
+                    str(state["original_stop_loss"]) if state["original_stop_loss"] is not None else None,
+                    str(state["current_stop_loss"]) if state["current_stop_loss"] is not None else None,
+                    state["be_order_id"],
+                    state["be_status"],
+                    state["updated_at"],
+                )
+            )

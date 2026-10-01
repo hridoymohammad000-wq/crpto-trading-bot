@@ -30,6 +30,7 @@ from app.core.config import settings
 from app.core.logging import configure_logging
 from app.exchange.bybit import BybitDemoClient
 from app.execution import ExecutionService
+from app.execution.position_manager import PositionManager
 from app.market_data import MarketDataService
 from app.persistence import PersistenceDatabase
 from app.readiness import TradingReadinessService
@@ -192,11 +193,18 @@ trading_readiness_service = TradingReadinessService(
 # Main bot runtime
 # ---------------------------------------------------------------------------
 
+
+position_manager = PositionManager(
+    exchange=exchange_client,
+    persistence=persistence_database,
+)
+
 bot_runtime = BotRuntime(
     strategy_service,
     scanner_engine=scanner_engine,
     risk_service=risk_service,
     execution_service=execution_service,
+    position_manager=position_manager,
     activity_repository=activity_repository,
     activity_service=activity_service,
     realtime_hub=realtime_hub,
