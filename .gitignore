@@ -42,6 +42,3 @@ REPLACE_INSTRUCTIONS.txt
 *.backup
 *.bak*
 app/backend/.local_secret
-
-app/backend/.pytest_local/
-app/backend/.pytest_tmp/

@@ -1,4 +1,4 @@
-﻿import { apiClient } from './client';
+import { apiClient } from './client';
 import { RequestOptions } from './types';
 import { Trade, TradingSymbol } from '../types';
 
@@ -17,6 +17,19 @@ interface BackendClosedTrade {
   take_profit?: number | string | null;
   exit_reason?: string | null;
   diagnostic_reason?: string | null;
+  mae_price?: number | string | null;
+  mfe_price?: number | string | null;
+  mae_pct?: number | string | null;
+  mfe_pct?: number | string | null;
+  mae_r?: number | string | null;
+  mfe_r?: number | string | null;
+  sl_distance?: number | string | null;
+  sl_distance_atr?: number | string | null;
+  mae_at?: string | null;
+  mfe_at?: string | null;
+  root_cause?: string | null;
+  root_cause_evidence?: string | null;
+  excursion_status?: string | null;
 }
 
 function num(value: unknown, fallback = 0): number {
@@ -86,6 +99,20 @@ export async function getTrades(options?: RequestOptions): Promise<Trade[]> {
 
       exitReason: bt.exit_reason || undefined,
       diagnosticReason: bt.diagnostic_reason || undefined,
+
+      maePrice: num(bt.mae_price, NaN),
+      mfePrice: num(bt.mfe_price, NaN),
+      maePct: num(bt.mae_pct, NaN),
+      mfePct: num(bt.mfe_pct, NaN),
+      maeR: num(bt.mae_r, NaN),
+      mfeR: num(bt.mfe_r, NaN),
+      slDistance: num(bt.sl_distance, NaN),
+      slDistanceAtr: num(bt.sl_distance_atr, NaN),
+      maeAt: bt.mae_at || undefined,
+      mfeAt: bt.mfe_at || undefined,
+      rootCause: bt.root_cause || undefined,
+      rootCauseEvidence: bt.root_cause_evidence || undefined,
+      excursionStatus: bt.excursion_status || undefined,
     };
   });
 }

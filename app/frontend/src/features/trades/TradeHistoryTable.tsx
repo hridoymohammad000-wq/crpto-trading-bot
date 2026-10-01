@@ -1,8 +1,10 @@
 import React from 'react';
 import {
   AlertTriangle,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Filter,
   History,
   RefreshCw,
@@ -44,6 +46,103 @@ export interface TradeHistoryTableProps {
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
 }
+
+const TradeRow: React.FC<{ trade: Trade; pnlClass: string }> = ({ trade, pnlClass }) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const isLoss = trade.result === 'Loss';
+  const hasDiag = trade.maePrice !== undefined || trade.mfePrice !== undefined || trade.rootCause !== undefined;
+
+  return (
+    <>
+      <tr
+        key={trade.id}
+        id={`row-trade-${trade.id}`}
+        className="hover:bg-slate-800/40 transition-colors cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap text-[11px] flex items-center gap-1">
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          {trade.closedAt}
+        </td>
+        <td className="py-2.5 px-3 font-bold text-slate-100 whitespace-nowrap">{trade.symbol}</td>
+        <td className="py-2.5 px-3 whitespace-nowrap"><StatusBadge type="position" value={trade.side} size="xs" /></td>
+        <td className="py-2.5 px-3 whitespace-nowrap">
+          <span className="px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700/50 text-[11px]">
+            {trade.strategy}
+          </span>
+        </td>
+        <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{trade.timeframe}</td>
+        <td className="py-2.5 px-3 text-right font-medium text-slate-300 whitespace-nowrap">
+          ${trade.entry.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        </td>
+        <td className="py-2.5 px-3 text-right font-medium text-slate-200 whitespace-nowrap">
+          ${trade.exit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        </td>
+        <td className={`py-2.5 px-3 text-right font-bold whitespace-nowrap ${pnlClass}`}>
+          {formatCurrency(trade.pnl, { showSign: true })}
+        </td>
+        <td className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${pnlClass}`}>
+          {formatPercentage(trade.pnlPercentage, { showSign: true })}
+        </td>
+        <td className="py-2.5 px-3 text-right text-slate-300 whitespace-nowrap">{trade.rr}</td>
+        <td className="py-2.5 px-3 text-right text-slate-400 whitespace-nowrap text-[11px]">{trade.duration}</td>
+        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+          <StatusBadge type="trade-result" value={trade.result} size="xs" />
+        </td>
+        <td className="py-2.5 px-3 whitespace-nowrap text-[11px]">
+          <span className={trade.exitReason?.includes('SL') ? 'text-rose-300' : trade.exitReason?.includes('TP') ? 'text-emerald-300' : 'text-slate-400'}>
+            {trade.exitReason || (trade.result === 'Loss' ? 'LOSS_EXIT' : trade.result === 'Win' ? 'PROFIT_EXIT' : 'BREAKEVEN')}
+          </span>
+        </td>
+        <td className="py-2.5 px-3 min-w-[260px] max-w-[360px] text-[11px] text-slate-400 truncate">
+          {trade.rootCause ? `Primary: ${trade.rootCause}` : (trade.diagnosticReason || 'No detailed diagnostic data available.')}
+        </td>
+      </tr>
+      {expanded && hasDiag && (
+        <tr className="bg-slate-900/50">
+          <td colSpan={14} className="py-3 px-4 border-t border-slate-800/40">
+            <div className="flex flex-col gap-2 text-[11px] font-mono text-slate-300">
+              <div className="font-bold text-slate-200 text-xs mb-1">
+                {isLoss ? 'WHY DID THIS TRADE LOSE?' : 'EXCURSION DIAGNOSTICS'}
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-950/40 p-3 rounded border border-slate-800/60">
+                {trade.rootCause && (
+                  <div className="flex flex-col">
+                    <span className="text-slate-500 uppercase">Primary Root Cause</span>
+                    <span className="text-amber-400 font-bold">{trade.rootCause}</span>
+                  </div>
+                )}
+                {trade.excursionStatus && (
+                  <div className="flex flex-col">
+                    <span className="text-slate-500 uppercase">Data Status</span>
+                    <span className="text-slate-300">{trade.excursionStatus}</span>
+                  </div>
+                )}
+                <div className="flex flex-col">
+                  <span className="text-slate-500 uppercase">Max Favorable Excursion (MFE)</span>
+                  <span className="text-emerald-400">{Number.isFinite(trade.mfeR) ? `+${trade.mfeR?.toFixed(2)}R` : '-'} ({trade.mfePct !== undefined && !Number.isNaN(trade.mfePct) ? `+${trade.mfePct?.toFixed(2)}%` : '-'})</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-slate-500 uppercase">Max Adverse Excursion (MAE)</span>
+                  <span className="text-rose-400">{Number.isFinite(trade.maeR) ? `${trade.maeR?.toFixed(2)}R` : '-'} ({trade.maePct !== undefined && !Number.isNaN(trade.maePct) ? `${trade.maePct?.toFixed(2)}%` : '-'})</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-slate-500 uppercase">SL Distance / ATR</span>
+                  <span className="text-slate-300">{Number.isFinite(trade.slDistanceAtr) ? `${trade.slDistanceAtr?.toFixed(2)}x` : '-'}</span>
+                </div>
+              </div>
+              
+              <div className="flex flex-col gap-1 mt-2">
+                <span className="text-slate-500 uppercase">Evidence</span>
+                <span className="text-slate-300 leading-relaxed whitespace-pre-wrap">{trade.rootCauseEvidence || trade.diagnosticReason || 'No evidence available.'}</span>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+};
 
 export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
   trades,
@@ -269,73 +368,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({
                   ? 'text-rose-400'
                   : 'text-slate-400';
 
-                return (
-                  <tr
-                    key={trade.id}
-                    id={`row-trade-${trade.id}`}
-                    className="hover:bg-slate-800/40 transition-colors"
-                  >
-                    <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap text-[11px]">
-                      {trade.closedAt}
-                    </td>
-
-                    <td className="py-2.5 px-3 font-bold text-slate-100 whitespace-nowrap">
-                      {trade.symbol}
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      <StatusBadge type="position" value={trade.side} size="xs" />
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700/50 text-[11px]">
-                        {trade.strategy}
-                      </span>
-                    </td>
-
-                    <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
-                      {trade.timeframe}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-right font-medium text-slate-300 whitespace-nowrap">
-                      ${trade.entry.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-right font-medium text-slate-200 whitespace-nowrap">
-                      ${trade.exit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-
-                    <td className={`py-2.5 px-3 text-right font-bold whitespace-nowrap ${pnlClass}`}>
-                      {formatCurrency(trade.pnl, { showSign: true })}
-                    </td>
-
-                    <td className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${pnlClass}`}>
-                      {formatPercentage(trade.pnlPercentage, { showSign: true })}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-right text-slate-300 whitespace-nowrap">
-                      {trade.rr}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-right text-slate-400 whitespace-nowrap text-[11px]">
-                      {trade.duration}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                      <StatusBadge type="trade-result" value={trade.result} size="xs" />
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap text-[11px]">
-                      <span className={trade.exitReason?.includes('SL') ? 'text-rose-300' : trade.exitReason?.includes('TP') ? 'text-emerald-300' : 'text-slate-400'}>
-                        {trade.exitReason || (trade.result === 'Loss' ? 'LOSS_EXIT' : trade.result === 'Win' ? 'PROFIT_EXIT' : 'BREAKEVEN')}
-                      </span>
-                    </td>
-
-                    <td className="py-2.5 px-3 min-w-[260px] max-w-[360px] text-[11px] text-slate-400">
-                      {trade.diagnosticReason || 'Entry-time context was not available for this historical trade.'}
-                    </td>
-                  </tr>
-                );
+                return <TradeRow key={trade.id} trade={trade} pnlClass={pnlClass} />;
               })}
             </tbody>
           </table>

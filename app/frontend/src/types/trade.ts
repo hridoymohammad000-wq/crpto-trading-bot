@@ -23,4 +23,17 @@ export interface Trade {
   closedAtISO?: string;
   exitReason?: string;
   diagnosticReason?: string;
+  maePrice?: number;
+  mfePrice?: number;
+  maePct?: number;
+  mfePct?: number;
+  maeR?: number;
+  mfeR?: number;
+  slDistance?: number;
+  slDistanceAtr?: number;
+  maeAt?: string;
+  mfeAt?: string;
+  rootCause?: string;
+  rootCauseEvidence?: string;
+  excursionStatus?: string;
 }

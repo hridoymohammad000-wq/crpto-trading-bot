@@ -196,17 +196,46 @@ class PersistenceDatabase:
         with self._schema_lock, self._connect() as conn:
             conn.executescript(self._schema_sql())
             self._ensure_execution_columns(conn)
-            self._ensure_closed_trade_columns(conn)
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_intent_id "
-                "ON execution_submissions(execution_intent_id) "
-                "WHERE execution_intent_id IS NOT NULL"
-            )
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_order_link_id "
-                "ON execution_submissions(order_link_id) "
-                "WHERE order_link_id IS NOT NULL"
-            )
+            self._ensure_mae_mfe_columns(conn)
+
+    def _ensure_mae_mfe_columns(self, conn: Any) -> None:
+        """Additive migration for persisted intratrade diagnostics."""
+        if self.database_url:
+            rows = conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'closed_trades'
+                """
+            ).fetchall()
+            existing = {str(row["column_name"]) for row in rows}
+        else:
+            existing = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(closed_trades)").fetchall()
+            }
+
+        columns = {
+            "mae_price": "TEXT",
+            "mfe_price": "TEXT",
+            "mae_pct": "TEXT",
+            "mfe_pct": "TEXT",
+            "mae_r": "TEXT",
+            "mfe_r": "TEXT",
+            "sl_distance": "TEXT",
+            "sl_distance_atr": "TEXT",
+            "mae_at": "TEXT",
+            "mfe_at": "TEXT",
+            "root_cause": "TEXT",
+            "root_cause_evidence": "TEXT",
+            "excursion_status": "TEXT",
+        }
+
+        for name, sql_type in columns.items():
+            if name not in existing:
+                conn.execute(
+                    f"ALTER TABLE closed_trades ADD COLUMN {name} {sql_type}"
+                )
 
     def _ensure_execution_columns(self, conn: Any) -> None:
         if self.database_url:
@@ -795,6 +824,135 @@ class PersistenceDatabase:
 
         return " | ".join(parts)
 
+    def update_trade_path_metrics(
+        self,
+        trade_key: str,
+        *,
+        mae_price: Decimal | None = None,
+        mfe_price: Decimal | None = None,
+        mae_pct: Decimal | None = None,
+        mfe_pct: Decimal | None = None,
+        mae_r: Decimal | None = None,
+        mfe_r: Decimal | None = None,
+        sl_distance: Decimal | None = None,
+        sl_distance_atr: Decimal | None = None,
+        mae_at: datetime | None = None,
+        mfe_at: datetime | None = None,
+        excursion_status: str | None = None,
+    ) -> None:
+        self.initialize()
+        with self._connect() as conn:
+            # 1) Get the trade
+            row = conn.execute("SELECT * FROM closed_trades WHERE trade_key=?", (trade_key,)).fetchone()
+            if not row:
+                return
+            
+            realized_pnl = Decimal(str(row["realized_pnl"]))
+            side = str(row["side"])
+
+            # 2) Get the execution for entry-time evidence
+            execution = None
+            if row["order_id"]:
+                execution = conn.execute(
+                    "SELECT * FROM execution_submissions WHERE order_id=? ORDER BY submitted_at DESC LIMIT 1",
+                    (row["order_id"],),
+                ).fetchone()
+            if not execution:
+                closed_at = row["updated_at"] or row["created_at"] or row["synced_at"]
+                execution = conn.execute(
+                    "SELECT * FROM execution_submissions WHERE symbol=? AND quantity=? AND submitted_at<=? ORDER BY submitted_at DESC LIMIT 1",
+                    (row["symbol"], row["quantity"], closed_at),
+                ).fetchone()
+
+            # 3) Gather base entry-time reasons and evidence
+            entry_reason_str = self._diagnose_sl_root_cause(execution, side=side)
+            
+            # Extract basic parts
+            primary_cause = "UNKNOWN_INSUFFICIENT_EVIDENCE"
+            evidence_parts = []
+            
+            if "Primary: " in entry_reason_str:
+                primary_cause = entry_reason_str.split("Primary: ")[1].split(" |")[0]
+            if "Evidence: " in entry_reason_str:
+                ev_str = entry_reason_str.split("Evidence: ")[1]
+                evidence_parts = ev_str.split("; ")
+
+            # 4) Add MAE/MFE evidence
+            if mfe_r is not None:
+                evidence_parts.append(f"MFE: {mfe_r:+.2f}R")
+            if mae_r is not None:
+                evidence_parts.append(f"MAE: {mae_r:+.2f}R")
+            if sl_distance_atr is not None:
+                evidence_parts.append(f"SL distance: {sl_distance_atr:.2f} ATR")
+            elif sl_distance is not None:
+                evidence_parts.append(f"SL distance: {sl_distance}")
+
+            # 5) Apply MAE/MFE root cause rules if losing trade
+            if realized_pnl < 0 and excursion_status != "HISTORICAL_DATA_UNAVAILABLE":
+                new_cause = None
+                
+                # Rule: IMMEDIATE_ADVERSE_MOVE
+                if mfe_r is not None and mfe_r < Decimal("0.20") and mae_r is not None and mae_r <= Decimal("-0.90"):
+                    new_cause = "IMMEDIATE_ADVERSE_MOVE"
+                
+                # Rule: REVERSAL_AFTER_FAVORABLE_MOVE
+                elif mfe_r is not None and mfe_r >= Decimal("0.50") and mae_r is not None and mae_r <= Decimal("-0.90"):
+                    new_cause = "REVERSAL_AFTER_FAVORABLE_MOVE"
+                
+                # Rule: STOP_TOO_TIGHT
+                elif sl_distance_atr is not None and sl_distance_atr < Decimal("1.0"):
+                    new_cause = "STOP_TOO_TIGHT"
+                
+                # Combine evidence: Do not overwrite stronger already-proven reasons blindly.
+                # LATE_ENTRY, COUNTER_TREND_ENTRY, MOMENTUM_REVERSAL are typically stronger.
+                strong_reasons = {"LATE_ENTRY", "COUNTER_TREND_ENTRY", "MOMENTUM_REVERSAL"}
+                if new_cause:
+                    if primary_cause in strong_reasons:
+                        evidence_parts.append(f"Secondary MAE/MFE cause: {new_cause}")
+                    else:
+                        if primary_cause != "UNKNOWN_INSUFFICIENT_EVIDENCE":
+                            evidence_parts.append(f"Secondary entry cause: {primary_cause}")
+                        primary_cause = new_cause
+
+            root_cause = primary_cause
+            root_cause_evidence = "; ".join(evidence_parts)
+
+            conn.execute(
+                """
+                UPDATE closed_trades
+                SET mae_price=?,
+                    mfe_price=?,
+                    mae_pct=?,
+                    mfe_pct=?,
+                    mae_r=?,
+                    mfe_r=?,
+                    sl_distance=?,
+                    sl_distance_atr=?,
+                    mae_at=?,
+                    mfe_at=?,
+                    root_cause=?,
+                    root_cause_evidence=?,
+                    excursion_status=?
+                WHERE trade_key=?
+                """,
+                (
+                    str(mae_price) if mae_price is not None else None,
+                    str(mfe_price) if mfe_price is not None else None,
+                    str(mae_pct) if mae_pct is not None else None,
+                    str(mfe_pct) if mfe_pct is not None else None,
+                    str(mae_r) if mae_r is not None else None,
+                    str(mfe_r) if mfe_r is not None else None,
+                    str(sl_distance) if sl_distance is not None else None,
+                    str(sl_distance_atr) if sl_distance_atr is not None else None,
+                    mae_at.isoformat() if mae_at else None,
+                    mfe_at.isoformat() if mfe_at else None,
+                    root_cause,
+                    root_cause_evidence,
+                    excursion_status,
+                    trade_key,
+                ),
+            )
+
     def list_closed_trades(self, limit: int = 100) -> list[ClosedTradeResponse]:
         """Return persisted closed trades enriched with the closest durable entry intent.
 
@@ -941,6 +1099,19 @@ class PersistenceDatabase:
                         take_profit=take_profit,
                         exit_reason=exit_reason,
                         diagnostic_reason=diagnostic_reason,
+                        mae_price=Decimal(row["mae_price"]) if row["mae_price"] is not None else None,
+                        mfe_price=Decimal(row["mfe_price"]) if row["mfe_price"] is not None else None,
+                        mae_pct=Decimal(row["mae_pct"]) if row["mae_pct"] is not None else None,
+                        mfe_pct=Decimal(row["mfe_pct"]) if row["mfe_pct"] is not None else None,
+                        mae_r=Decimal(row["mae_r"]) if row["mae_r"] is not None else None,
+                        mfe_r=Decimal(row["mfe_r"]) if row["mfe_r"] is not None else None,
+                        sl_distance=Decimal(row["sl_distance"]) if row["sl_distance"] is not None else None,
+                        sl_distance_atr=Decimal(row["sl_distance_atr"]) if row["sl_distance_atr"] is not None else None,
+                        mae_at=datetime.fromisoformat(row["mae_at"]) if row["mae_at"] else None,
+                        mfe_at=datetime.fromisoformat(row["mfe_at"]) if row["mfe_at"] else None,
+                        root_cause=row["root_cause"],
+                        root_cause_evidence=row["root_cause_evidence"],
+                        excursion_status=row["excursion_status"],
                     )
                 )
 

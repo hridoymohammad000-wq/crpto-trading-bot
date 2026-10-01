@@ -1,4 +1,5 @@
-from decimal import Decimal
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
 from app.exchange.bybit import BybitDemoClient
 from app.models.activity import ClosedTradeResponse, TradeStatsResponse
@@ -20,6 +21,118 @@ class ActivityService:
     def list_signals(self, *, limit: int = 100):
         return self._repository.list_signals(limit=limit)
 
+    @staticmethod
+    def _trade_path_metrics(
+        trade: ClosedTradeResponse,
+        candles,
+    ) -> dict:
+        """Calculate deterministic MAE/MFE from closed 5m candle path.
+
+        Only closed candles whose start time is at/after the recorded entry
+        time and at/before the recorded exit time are considered.
+        """
+        entry = trade.entry_price
+        exit_price = trade.exit_price
+        start = trade.created_at
+        end = trade.updated_at
+
+        if entry is None or exit_price is None or start is None or end is None:
+            return {"excursion_status": "HISTORICAL_DATA_UNAVAILABLE"}
+
+        # Check if the candles provided cover the full trade window.
+        sorted_candles = sorted((c for c in candles if c.is_closed), key=lambda c: c.start_time)
+        if not sorted_candles:
+            return {"excursion_status": "HISTORICAL_DATA_UNAVAILABLE"}
+        
+        # A partial window occurs if the earliest candle starts strictly after the trade started,
+        # or if the latest candle starts strictly before the trade ended (with some tolerance).
+        earliest_candle_start = sorted_candles[0].start_time
+        latest_candle_start = sorted_candles[-1].start_time
+        
+        is_partial = earliest_candle_start > start
+        
+        path = [
+            c for c in sorted_candles
+            if c.start_time >= start and c.start_time <= end
+        ]
+
+        if not path:
+            return {"excursion_status": "PARTIAL" if is_partial else "HISTORICAL_DATA_UNAVAILABLE"}
+
+        side = str(trade.side).upper()
+
+        if side == "LONG":
+            favorable = max(path, key=lambda c: c.high)
+            adverse = min(path, key=lambda c: c.low)
+
+            mfe_price = favorable.high - entry
+            mae_price = adverse.low - entry
+        else:
+            favorable = min(path, key=lambda c: c.low)
+            adverse = max(path, key=lambda c: c.high)
+
+            mfe_price = entry - favorable.low
+            mae_price = entry - adverse.high
+
+        mfe_pct = (mfe_price / entry * Decimal("100")) if entry else None
+        mae_pct = (mae_price / entry * Decimal("100")) if entry else None
+
+        risk = (
+            abs(entry - trade.stop_loss)
+            if trade.stop_loss is not None
+            else None
+        )
+
+        mfe_r = (mfe_price / risk) if risk and risk > 0 else None
+        mae_r = (mae_price / risk) if risk and risk > 0 else None
+
+        # Reconstruct a 5m ATR(14) immediately before entry.
+        before = [
+            c for c in sorted_candles
+            if c.start_time < start
+        ][-15:]
+
+        atr = None
+        if len(before) >= 14:
+            trs = []
+            previous_close = None
+            for candle in before:
+                if previous_close is None:
+                    tr = candle.high - candle.low
+                else:
+                    tr = max(
+                        candle.high - candle.low,
+                        abs(candle.high - previous_close),
+                        abs(candle.low - previous_close),
+                    )
+                trs.append(tr)
+                previous_close = candle.close
+
+            if trs:
+                atr = sum(trs[-14:], Decimal("0")) / Decimal("14")
+
+        sl_distance_atr = (
+            risk / atr
+            if risk is not None and atr is not None and atr > 0
+            else None
+        )
+
+        excursion_status = "PARTIAL" if is_partial else "COMPLETE"
+
+        return {
+            "mae_price": mae_price,
+            "mfe_price": mfe_price,
+            "mae_pct": mae_pct,
+            "mfe_pct": mfe_pct,
+            "mae_r": mae_r,
+            "mfe_r": mfe_r,
+            "sl_distance": risk,
+            "sl_distance_atr": sl_distance_atr,
+            "mae_at": adverse.start_time,
+            "mfe_at": favorable.start_time,
+            "excursion_status": excursion_status,
+        }
+
     async def list_trades(self, *, limit: int = 100) -> list[ClosedTradeResponse]:
         rows = await self._exchange.get_closed_trades(limit=limit)
         trades = [
@@ -40,6 +153,49 @@ class ActivityService:
         ]
         if self._persistence is not None:
             self._persistence.upsert_closed_trades(trades)
+
+            # Enrich every newly synced trade with its 5m intratrade path.
+            # Failure to reconstruct a path must never block trade syncing.
+            # Fetch persisted trades to get their stop_loss which Bybit doesn't provide
+            persisted_trades = self._persistence.list_closed_trades(limit=max(100, limit * 2))
+            persisted_by_id = {t.order_id: t for t in persisted_trades if t.order_id}
+
+            for api_trade in trades:
+                try:
+                    if api_trade.created_at is None or api_trade.updated_at is None:
+                        continue
+
+                    # Use the DB trade so we have the initial stop_loss for MAE-R calculations
+                    trade = persisted_by_id.get(api_trade.order_id, api_trade)
+
+                    candles = await self._exchange.get_candles(
+                        trade.symbol,
+                        "5m",
+                        limit=1000,
+                    )
+
+                    metrics = self._trade_path_metrics(trade, candles)
+                    if metrics:
+                        trade_key = trade.order_id or "|".join(
+                            [
+                                trade.symbol,
+                                trade.side,
+                                str(trade.quantity),
+                                str(trade.entry_price),
+                                str(trade.exit_price),
+                                trade.created_at.isoformat() if trade.created_at else "",
+                                trade.updated_at.isoformat() if trade.updated_at else "",
+                            ]
+                        )
+                        self._persistence.update_trade_path_metrics(
+                            trade_key,
+                            **metrics,
+                        )
+                except Exception:
+                    # Diagnostic enrichment is best-effort; it must never
+                    # prevent the primary closed-trade sync from succeeding.
+                    continue
+
         return trades
 
     def list_persisted_trades(self, *, limit: int = 100) -> list[ClosedTradeResponse]:

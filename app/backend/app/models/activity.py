@@ -47,6 +47,21 @@ class ClosedTradeResponse(BaseModel):
     exit_reason: str | None = None
     diagnostic_reason: str | None = None
 
+    # Intratrade path diagnostics.
+    mae_price: Decimal | None = None
+    mfe_price: Decimal | None = None
+    mae_pct: Decimal | None = None
+    mfe_pct: Decimal | None = None
+    mae_r: Decimal | None = None
+    mfe_r: Decimal | None = None
+    sl_distance: Decimal | None = None
+    sl_distance_atr: Decimal | None = None
+    mae_at: datetime | None = None
+    mfe_at: datetime | None = None
+    root_cause: str | None = None
+    root_cause_evidence: str | None = None
+    excursion_status: str | None = None
+
 
 class TradeStatsResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
