@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     MAX_OPEN_RISK_PCT: str = "3"
     FEE_BUFFER_PCT: str = "0.20"
     SLIPPAGE_BUFFER_PCT: str = "0.10"
-    STRUCTURE_LOOKBACK: int = 5
-    STRUCTURE_BUFFER_PCT: str = "0.10"
+    STRUCTURE_LOOKBACK: int = 15
+    STRUCTURE_BUFFER_PCT: str = "0.30"
     EXECUTION_ENABLED: bool = True
     WS_PUBLISH_INTERVAL_SECONDS: float = 5.0
     DATABASE_PATH: str = "data/trading_bot.sqlite3"
