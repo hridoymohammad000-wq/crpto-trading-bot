@@ -60,17 +60,17 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
         </div>
       )}
 
-      {visibleSignals.length === 0 ? (
+      {actionableSignals.length === 0 ? (
         <EmptyState
-          title={isError ? 'Unable to load signals' : 'No signals found'}
-          description={isError ? (errorMessage || 'Unable to load signal data.') : 'Rejected signals are hidden. New/approved/executed signals will appear here.'}
+          title={isError ? 'Unable to load signals' : 'No actionable signals right now.'}
+          description={isError ? (errorMessage || 'Unable to load signal data.') : 'Rejected and expired signals are hidden. New/approved/executed signals will appear here.'}
           icon={isError ? 'alert' : 'inbox'}
           actionLabel={onRetry ? 'Retry Fetch' : undefined}
           onAction={onRetry}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-3">
-          {visibleSignals.map((sig) => (
+          {actionableSignals.map((sig) => (
             <article key={sig.id} id={`card-signal-${sig.id}`} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 font-mono shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
