@@ -30,6 +30,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
   // Rejected items remain available to backend diagnostics but are intentionally
   // removed from the actionable user-facing feed.
   const visibleSignals = signals.filter((signal) => signal.status !== 'Rejected');
+  const actionableSignals = visibleSignals.filter((signal) => !signal.isExpired && signal.status !== 'Expired');
 
   return (
     <div id="panel-signals" className={`bg-slate-900/80 border border-slate-800 rounded-md overflow-hidden flex flex-col ${className}`}>
@@ -49,7 +50,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
               <RefreshCw size={11} className={isLoading ? 'animate-spin' : ''} />
             </button>
           )}
-          <span className="text-[10px] font-mono text-slate-400 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/60">{visibleSignals.length} Signals</span>
+          <span className="text-[10px] font-mono text-slate-400 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/60">{actionableSignals.length} Actionable / {visibleSignals.length} Total</span>
         </div>
       </div>
 
@@ -61,7 +62,7 @@ export const SignalFeed: React.FC<SignalFeedProps> = ({
 
       {visibleSignals.length === 0 ? (
         <EmptyState
-          title={isError ? 'Unable to load signals' : 'No actionable signals'}
+          title={isError ? 'Unable to load signals' : 'No signals found'}
           description={isError ? (errorMessage || 'Unable to load signal data.') : 'Rejected signals are hidden. New/approved/executed signals will appear here.'}
           icon={isError ? 'alert' : 'inbox'}
           actionLabel={onRetry ? 'Retry Fetch' : undefined}

@@ -4,7 +4,7 @@ export type TradeSide = 'BUY' | 'SELL';
 
 export type SignalStrategy = 'EMA + RSI' | 'Bollinger Squeeze' | 'VWAP Pullback';
 
-export type SignalStatus = 'New' | 'Approved' | 'Rejected' | 'Executed';
+export type SignalStatus = 'New' | 'Approved' | 'Rejected' | 'Executed' | 'Expired';
 
 export interface Signal {
   id: string;
@@ -15,8 +15,14 @@ export interface Signal {
   entry: number;
   sl: number;
   tp: number;
-  confidence: number; // e.g. 82 (represents 82%)
+  confidence: number;
   timestamp: string;
-  age: string; // e.g. "2m ago"
+  age: string;
   status: SignalStatus;
+  
+  // New TTL properties
+  signalTime: string;
+  expiresAt: string;
+  isExpired: boolean;
+  ageSeconds: number;
 }

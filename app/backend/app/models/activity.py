@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from app.models.candle import SupportedSymbol
 from app.models.execution import ExecutionStatus
@@ -25,6 +25,25 @@ class SignalActivityResponse(BaseModel):
     order_id: str | None = None
     stop_loss: Decimal | None = None
     take_profit: Decimal | None = None
+
+    @computed_field
+    @property
+    def expires_at(self) -> datetime:
+        from datetime import timedelta
+        from app.core.config import settings
+        return self.signal_time + timedelta(seconds=settings.SIGNAL_MAX_AGE_SECONDS)
+
+    @computed_field
+    @property
+    def is_expired(self) -> bool:
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc) >= self.expires_at
+
+    @computed_field
+    @property
+    def age_seconds(self) -> float:
+        from datetime import datetime, timezone
+        return (datetime.now(timezone.utc) - self.signal_time).total_seconds()
 
 
 class ClosedTradeResponse(BaseModel):

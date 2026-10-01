@@ -14,6 +14,9 @@ interface BackendSignal {
   execution_status?: string;
   stop_loss?: number;
   take_profit?: number;
+  expires_at: string;
+  is_expired: boolean;
+  age_seconds: number;
 }
 
 /** Fetch signals from the backend REST endpoint */
@@ -26,6 +29,13 @@ export async function getSignals(symbol?: TradingSymbol, options?: RequestOption
     if (bs.execution_status === 'EXECUTED') mappedStatus = 'Executed';
     else if (bs.risk_status === 'APPROVED') mappedStatus = 'Approved';
     else if (bs.risk_status === 'REJECTED') mappedStatus = 'Rejected';
+    else if (bs.is_expired) mappedStatus = 'Expired';
+
+    const ageSec = bs.age_seconds;
+    let displayAge = `${Math.floor(ageSec)}s`;
+    if (ageSec >= 60) {
+      displayAge = `${Math.floor(ageSec / 60)}m ${Math.floor(ageSec % 60)}s`;
+    }
 
     return {
       id: bs.signal_id,
@@ -38,8 +48,12 @@ export async function getSignals(symbol?: TradingSymbol, options?: RequestOption
       tp: bs.take_profit || 0,
       confidence: bs.confidence,
       timestamp: new Date(bs.signal_time).toLocaleTimeString(),
-      age: 'Recent',
+      age: displayAge,
       status: mappedStatus,
+      signalTime: bs.signal_time,
+      expiresAt: bs.expires_at,
+      isExpired: bs.is_expired,
+      ageSeconds: bs.age_seconds,
     };
   });
 

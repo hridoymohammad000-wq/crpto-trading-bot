@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   AccountSummary,
   NavigationTab,
@@ -26,6 +26,7 @@ import { usePositionsData } from './usePositionsData';
 import { useReconciliation } from './useReconciliation';
 import { useSignalsData } from './useSignalsData';
 import { useTradesData } from './useTradesData';
+import { evaluateSignalExpiry } from '../utils/signalLifecycle';
 
 export function useDashboard() {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('Dashboard');
@@ -195,6 +196,14 @@ export function useDashboard() {
     setTimeout(() => {
       setSystemNotification((curr) => (curr === payload.message ? null : curr));
     }, 6000);
+  }, []);
+
+  // Hook: auto-expire websocket signals
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWsSignals((sigs) => sigs.map((sig) => evaluateSignalExpiry(sig, Date.now())));
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // Live WebSocket Connection Hook connecting to /ws/live

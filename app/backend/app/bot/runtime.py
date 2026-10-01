@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timezone
@@ -9,6 +9,8 @@ from app.models.candle import SupportedSymbol
 from app.strategies.service import StrategyService
 from app.risk import RiskService
 from app.execution import ExecutionService
+from app.execution.position_manager import PositionManager
+from app.core.config import settings
 from app.models.risk import RiskDecisionStatus
 from app.repositories import ActivityRepository
 from app.activity import ActivityService
@@ -594,9 +596,13 @@ class BotRuntime:
                                     "sl": float(risk_decision.stop_loss) if risk_decision and risk_decision.stop_loss else 0.0,
                                     "tp": float(risk_decision.take_profit) if risk_decision and risk_decision.take_profit else 0.0,
                                     "confidence": signal.confidence,
-                                    "timestamp": signal.signal_time.isoformat(),
-                                    "age": "now",
+                                                                        "timestamp": signal.signal_time.isoformat(),
+                                    "age": "0s",
                                     "status": signal_status,
+                                    "signalTime": signal.signal_time.isoformat(),
+                                    "expiresAt": (signal.signal_time + __import__("datetime").timedelta(seconds=settings.SIGNAL_MAX_AGE_SECONDS)).isoformat(),
+                                    "isExpired": False,
+                                    "ageSeconds": 0,
                                 }
                             },
                         ), 5.0)

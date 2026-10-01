@@ -31,7 +31,7 @@ def evaluation(symbol: str) -> StrategyEvaluation:
 class Market:
     async def fetch_candles(self, symbol, timeframe, *, limit=200, closed_only=False):
         n = 30
-        step = {"15m": 15, "5m": 5, "1m": 1}[timeframe]
+        step = {"1H": 60, "15m": 15, "5m": 5}[timeframe]
         rows = []
         base = Decimal("100")
         for i in range(n, 0, -1):

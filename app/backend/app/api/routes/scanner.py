@@ -62,13 +62,15 @@ def get_watchlist(request: Request):
                 "symbol": v.symbol,
                 "state": v.state.value,
                 "execution_allowed": v.execution_allowed,
-                "context_15m": v.context_15m,
-                "setup_5m": v.setup_5m,
-                "trigger_1m": {
-                    "trigger_status": v.trigger_1m.get("trigger_status"),
-                    "latest_closed_candle": v.trigger_1m.get("latest_closed_candle"),
-                    "trigger_reason": v.trigger_1m.get("trigger_reason")
-                } if v.trigger_1m else {},
+                "trend_1h": v.trend_1h,
+                "setup_15m": v.setup_15m,
+                "entry_5m": {
+                    "entry_valid": v.entry_5m.get("entry_valid"),
+                    "entry_status": v.entry_5m.get("entry_status"),
+                    "entry_reason": v.entry_5m.get("entry_reason"),
+                    "strategy_reasons": v.entry_5m.get("strategy_reasons", []),
+                    "time": v.entry_5m.get("time"),
+                } if v.entry_5m else {},
                 "reason_codes": v.reason_codes
             } for k, v in engine.watchlist.symbol_states.items()
         }
@@ -153,13 +155,15 @@ def get_symbol_state(request: Request, symbol: str):
         "state": state.state.value if state else opportunity.state.value if opportunity else "DISCOVERED",
         "regime": opportunity.regime.value if opportunity else "UNKNOWN",
         "bias": opportunity.bias if opportunity else None,
-        "15m": state.context_15m if state else {},
-        "5m": state.setup_5m if state else {},
-        "1m": {
-            "trigger_status": state.trigger_1m.get("trigger_status"),
-            "latest_closed_candle": state.trigger_1m.get("latest_closed_candle"),
-            "trigger_reason": state.trigger_1m.get("trigger_reason")
-        } if state and state.trigger_1m else {},
+        "1H": state.trend_1h if state else {},
+        "15m": state.setup_15m if state else {},
+        "5m": {
+            "entry_valid": state.entry_5m.get("entry_valid"),
+            "entry_status": state.entry_5m.get("entry_status"),
+            "entry_reason": state.entry_5m.get("entry_reason"),
+            "strategy_reasons": state.entry_5m.get("strategy_reasons", []),
+            "time": state.entry_5m.get("time"),
+        } if state and state.entry_5m else {},
         "scores": {
             "market_quality_score": opportunity.market_quality_score if opportunity else 0,
             "setup_quality_score": opportunity.setup_quality_score if opportunity else 0,
@@ -171,4 +175,3 @@ def get_symbol_state(request: Request, symbol: str):
         },
         "reason_codes": state.reason_codes if state else list(opportunity.reason_codes) if opportunity else []
     }
-

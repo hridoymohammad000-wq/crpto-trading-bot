@@ -38,12 +38,12 @@ class SymbolState:
     market_quality_score: int = 0
     setup_quality_score: int = 0
     execution_allowed: bool = False
+    last_processed_1h: datetime | None = None
     last_processed_15m: datetime | None = None
     last_processed_5m: datetime | None = None
-    last_processed_1m: datetime | None = None
-    context_15m: dict[str, Any] = field(default_factory=dict)
-    setup_5m: dict[str, Any] = field(default_factory=dict)
-    trigger_1m: dict[str, Any] = field(default_factory=dict)
+    trend_1h: dict[str, Any] = field(default_factory=dict)
+    setup_15m: dict[str, Any] = field(default_factory=dict)
+    entry_5m: dict[str, Any] = field(default_factory=dict)
     execution_diagnostics: dict[str, Any] = field(default_factory=dict)
     spread_pct: Decimal = Decimal("0")
     atr_pct: Decimal | None = None

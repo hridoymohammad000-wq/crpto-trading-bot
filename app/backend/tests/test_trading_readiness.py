@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, Mock
@@ -263,4 +263,23 @@ def test_protection_mismatch_warns_only_for_new_entry():
         TradingReadinessReason.BLOCKED_RECONCILIATION_CRITICAL
         not in decision.reason_codes
     )
+
+def test_signal_stale_boundary():
+    service = build_service()
+    service.max_signal_age_seconds = 300.0
+
+    # 299 seconds is NOT EXPIRED
+    decision_299 = evaluate(service, signal=make_signal(age_seconds=299))
+    assert TradingReadinessReason.BLOCKED_SIGNAL_STALE not in decision_299.reason_codes
+
+    # 300 seconds is EXPIRED
+    decision_300 = evaluate(service, signal=make_signal(age_seconds=300))
+    assert decision_300.status is TradingReadinessStatus.BLOCKED
+    assert TradingReadinessReason.BLOCKED_SIGNAL_STALE in decision_300.reason_codes
+
+    # 301 seconds is EXPIRED
+    decision_301 = evaluate(service, signal=make_signal(age_seconds=301))
+    assert decision_301.status is TradingReadinessStatus.BLOCKED
+    assert TradingReadinessReason.BLOCKED_SIGNAL_STALE in decision_301.reason_codes
+
 

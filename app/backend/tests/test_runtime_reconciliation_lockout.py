@@ -61,7 +61,9 @@ async def test_runtime_locks_out_symbol_on_unknown_reconciling_status():
     # We create a fake state in TRIGGERED
     state = SymbolState("BTCUSDT", SetupState.TRIGGERED)
     state.execution_allowed = True
-    state.trigger_1m = {"signal": Mock(
+    state.trend_1h = {"trend_valid": True}
+    state.setup_15m = {"setup_valid": True}
+    state.entry_5m = {"signal": Mock(
         symbol="BTCUSDT",
         side=SignalSide.BUY,
         signal_id="sig-1",
@@ -114,10 +116,11 @@ async def test_runtime_locks_out_symbol_on_unknown_reconciling_status():
         return aw
     
     with patch("asyncio.wait_for", new=fast_wait):
-        with patch.object(PipelineStateMachine, 'evaluate_15m_context', return_value=True):
-            with patch.object(PipelineStateMachine, 'evaluate_5m_setup', return_value=True):
-                with patch.object(PipelineStateMachine, 'arm_strategy_authority_trigger', return_value=True):
-                    await runtime._run_cycle()
+        with patch.object(PipelineStateMachine, 'evaluate_1h_trend', return_value=True):
+            with patch.object(PipelineStateMachine, 'evaluate_15m_setup', return_value=True):
+                with patch.object(PipelineStateMachine, 'evaluate_5m_entry', return_value=True):
+                    with patch.object(PipelineStateMachine, 'confirm_5m_entry', return_value=True):
+                        await runtime._run_cycle()
                     
     execution_service.execute.assert_called_once()
     
@@ -128,10 +131,11 @@ async def test_runtime_locks_out_symbol_on_unknown_reconciling_status():
     execution_service.execute.reset_mock()
     
     with patch("asyncio.wait_for", new=fast_wait):
-        with patch.object(PipelineStateMachine, 'evaluate_15m_context', return_value=True):
-            with patch.object(PipelineStateMachine, 'evaluate_5m_setup', return_value=True):
-                with patch.object(PipelineStateMachine, 'arm_strategy_authority_trigger', return_value=True):
-                    await runtime._run_cycle()
+        with patch.object(PipelineStateMachine, 'evaluate_1h_trend', return_value=True):
+            with patch.object(PipelineStateMachine, 'evaluate_15m_setup', return_value=True):
+                with patch.object(PipelineStateMachine, 'evaluate_5m_entry', return_value=True):
+                    with patch.object(PipelineStateMachine, 'confirm_5m_entry', return_value=True):
+                        await runtime._run_cycle()
                 
     assert state.execution_allowed is False
     assert "RECONCILIATION_MISMATCH" in state.reason_codes
@@ -143,10 +147,11 @@ async def test_runtime_locks_out_symbol_on_unknown_reconciling_status():
     runtime._reconciliation_engine = reconciliation_engine
 
     with patch("asyncio.wait_for", new=fast_wait):
-        with patch.object(PipelineStateMachine, 'evaluate_15m_context', return_value=True):
-            with patch.object(PipelineStateMachine, 'evaluate_5m_setup', return_value=True):
-                with patch.object(PipelineStateMachine, 'arm_strategy_authority_trigger', return_value=True):
-                    await runtime._run_cycle()
+        with patch.object(PipelineStateMachine, 'evaluate_1h_trend', return_value=True):
+            with patch.object(PipelineStateMachine, 'evaluate_15m_setup', return_value=True):
+                with patch.object(PipelineStateMachine, 'evaluate_5m_entry', return_value=True):
+                    with patch.object(PipelineStateMachine, 'confirm_5m_entry', return_value=True):
+                        await runtime._run_cycle()
 
     # Verify recovery
     assert "execution_status" not in state.execution_diagnostics

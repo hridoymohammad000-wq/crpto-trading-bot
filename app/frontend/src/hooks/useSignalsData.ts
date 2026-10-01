@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSignals } from '../api';
 import { Signal, TradingSymbol } from '../types';
+import { evaluateSignalExpiry } from '../utils/signalLifecycle';
 
 export interface UseSignalsDataReturn {
   signals: Signal[];
@@ -55,6 +56,15 @@ export function useSignalsData(symbol?: TradingSymbol): UseSignalsDataReturn {
   useEffect(() => {
     fetchSignals();
   }, [fetchSignals]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSignals(currentSignals => 
+        currentSignals.map(sig => evaluateSignalExpiry(sig, Date.now()))
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return {
     signals,

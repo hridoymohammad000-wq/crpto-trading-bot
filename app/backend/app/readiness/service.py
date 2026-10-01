@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -88,7 +88,7 @@ class TradingReadinessService:
             reasons.append(TradingReadinessReason.BLOCKED_COOLDOWN)
         if duplicate_signal:
             reasons.append(TradingReadinessReason.BLOCKED_DUPLICATE_SIGNAL)
-        if signal_age > self.max_signal_age_seconds:
+        if signal_age >= self.max_signal_age_seconds:
             reasons.append(TradingReadinessReason.BLOCKED_SIGNAL_STALE)
 
         if (

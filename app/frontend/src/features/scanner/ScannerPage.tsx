@@ -1,12 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { StaleDataBanner } from "../../components/StaleDataBanner";
-import { fetchScannerStatus, fetchScannerCandidates, fetchScannerWatchlist } from "../../api/scanner";
+import {
+  fetchScannerStatus,
+  fetchScannerCandidates,
+  fetchScannerWatchlist,
+  type ScannerCandidate,
+  type ScannerStatus,
+  type ScannerWatchlist,
+} from "../../api/scanner";
 
 export const ScannerPage: React.FC = () => {
-  const [status, setStatus] = useState<any>(null);
-  const [universe, setUniverse] = useState<any[]>([]);
-  const [watchlist, setWatchlist] = useState<any>(null);
+  const [status, setStatus] = useState<ScannerStatus | null>(null);
+  const [universe, setUniverse] = useState<ScannerCandidate[]>([]);
+  const [watchlist, setWatchlist] = useState<ScannerWatchlist | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -125,7 +132,7 @@ export const ScannerPage: React.FC = () => {
           </div>
           <div className="p-3 bg-slate-900 border border-slate-800 rounded">
             <div className="text-xs text-slate-400 mb-1">Watching</div>
-            <div className="text-lg font-semibold text-amber-400">{watchlist?.symbol_states ? Object.values(watchlist.symbol_states).filter((state: any) => state?.state === "WATCHING").length : status.watching_count}</div>
+            <div className="text-lg font-semibold text-amber-400">{watchlist?.symbol_states ? Object.values(watchlist.symbol_states).filter((state) => state?.state === "WATCHING").length : status.watching_count}</div>
           </div>
           <div className="p-3 bg-slate-900 border border-slate-800 rounded">
             <div className="text-xs text-slate-400 mb-1">Armed</div>
@@ -149,14 +156,12 @@ export const ScannerPage: React.FC = () => {
               <tr>
                 <th className="px-2 py-2 font-medium">Symbol</th>
                 <th className="px-2 py-2 font-medium">State</th>
-                <th className="px-2 py-2 font-medium">Regime</th>
-                <th className="px-2 py-2 font-medium">Bias</th>
-                <th className="px-2 py-2 font-medium">15m Ctx</th>
-                <th className="px-2 py-2 font-medium">5m Setup</th>
-                <th className="px-2 py-2 font-medium">1m Trigger</th>
+                <th className="px-2 py-2 font-medium">1H Trend</th>
+                <th className="px-2 py-2 font-medium">15m Setup</th>
+                <th className="px-2 py-2 font-medium">5m Entry</th>
                 <th className="px-2 py-2 font-medium">ADX</th>
                 <th className="px-2 py-2 font-medium">RVOL</th>
-                <th className="px-2 py-2 font-medium">Score(M/S)</th>
+                <th className="px-2 py-2 font-medium">Score</th>
                 <th className="px-2 py-2 font-medium">Allowed</th>
                 <th className="px-2 py-2 font-medium">Reason</th>
               </tr>
@@ -167,9 +172,9 @@ export const ScannerPage: React.FC = () => {
                 const sState = watchlist?.symbol_states?.[o.symbol] || {};
                 
                 const currentState = sState.state || o.state;
-                const context15m = sState.context_15m?.context_valid ? "PASS" : "FAIL";
-                const setup5m = sState.setup_5m?.setup_valid ? "PASS" : "FAIL";
-                const trigger1m = sState.trigger_1m?.trigger_status ? "PASS" : "WAIT";
+                const trend1h = sState.trend_1h?.trend_valid ? sState.trend_1h.trend || "PASS" : "FAIL";
+                const setup15m = sState.setup_15m?.setup_valid ? "PASS" : "FAIL";
+                const entry5m = sState.entry_5m?.entry_valid ? "PASS" : "FAIL";
                 const allowed = sState.execution_allowed ? "YES" : "NO";
                 
                 const reasons = sState.reason_codes?.length ? sState.reason_codes.join(", ") : o.reason_codes?.join(", ") || "-";
@@ -191,11 +196,9 @@ export const ScannerPage: React.FC = () => {
                         {currentState}
                       </span>
                     </td>
-                    <td className="px-2 py-2 truncate max-w-[80px]">{o.regime?.replace("_", " ")}</td>
-                    <td className="px-2 py-2">{o.bias || "-"}</td>
-                    <td className={`px-2 py-2 font-mono ${context15m === "PASS" ? "text-emerald-400" : "text-slate-500"}`}>{context15m}</td>
-                    <td className={`px-2 py-2 font-mono ${setup5m === "PASS" ? "text-emerald-400" : "text-slate-500"}`}>{setup5m}</td>
-                    <td className={`px-2 py-2 font-mono ${trigger1m === "PASS" ? "text-cyan-400" : "text-slate-500"}`}>{trigger1m}</td>
+                    <td className={`px-2 py-2 font-mono ${sState.trend_1h?.trend_valid ? "text-emerald-400" : "text-slate-500"}`}>{trend1h}</td>
+                    <td className={`px-2 py-2 font-mono ${setup15m === "PASS" ? "text-emerald-400" : "text-slate-500"}`}>{setup15m}</td>
+                    <td className={`px-2 py-2 font-mono ${entry5m === "PASS" ? "text-cyan-400" : "text-slate-500"}`}>{entry5m}</td>
                     <td className="px-2 py-2 font-mono">{o.adx?.toFixed(1) || "-"}</td>
                     <td className="px-2 py-2 font-mono">{o.rvol?.toFixed(2) || "-"}</td>
                     <td className="px-2 py-2">{o.market_quality_score}/{o.setup_quality_score}</td>
@@ -220,5 +223,4 @@ export const ScannerPage: React.FC = () => {
     </div>
   );
 };
-
 

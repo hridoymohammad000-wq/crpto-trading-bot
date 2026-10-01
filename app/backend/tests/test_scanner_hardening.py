@@ -17,8 +17,9 @@ NOW = datetime(2026, 9, 17, 0, 0, tzinfo=timezone.utc)
 
 
 def candle(tf: str, minutes_ago: int = 0, *, closed: bool = True, close: str = "104") -> Candle:
-    mins = {"1m": 1, "5m": 5, "15m": 15}[tf]
-    return Candle(symbol="BTCUSDT", timeframe=tf, start_time=NOW - timedelta(minutes=minutes_ago * mins), open=Decimal("100"), high=Decimal("105"), low=Decimal("98"), close=Decimal(close), volume=Decimal("100"), turnover=Decimal("10000"), is_closed=closed)
+    mins = {"5m": 5, "15m": 15, "1H": 60}[tf]
+    close_value = Decimal(close)
+    return Candle(symbol="BTCUSDT", timeframe=tf, start_time=NOW - timedelta(minutes=minutes_ago * mins), open=close_value-Decimal("1"), high=close_value+Decimal("1"), low=close_value-Decimal("2"), close=close_value, volume=Decimal("100"), turnover=Decimal("10000"), is_closed=closed)
 
 
 def signal(symbol="BTCUSDT") -> StrategySignal:
@@ -30,12 +31,14 @@ def evaluation(symbol="BTCUSDT", *, with_signal=True) -> StrategyEvaluation:
 
 
 class FakeMarket:
-    def __init__(self, c15=None, c5=None, c1=None):
-        self.c15 = tuple(c15 or [candle("15m", i) for i in range(24, -1, -1)])
+    def __init__(self, c1h=None, c15=None, c5=None):
+        self.c1h = tuple(c1h or [candle("1H", i, close=str(130 - i)) for i in range(24, -1, -1)])
+        self.c15 = tuple(c15 or [candle("15m", i, close=str(140 - i)) for i in range(29, -1, -1)])
         self.c5 = tuple(c5 or [candle("5m", i) for i in range(29, -1, -1)])
-        self.c1 = tuple(c1 or [candle("1m")])
+        self.calls = []
     async def fetch_candles(self, symbol, timeframe, *, limit=200, closed_only=False):
-        rows = {"15m": self.c15, "5m": self.c5, "1m": self.c1}[timeframe]
+        self.calls.append((symbol, timeframe, limit, closed_only))
+        rows = {"1H": self.c1h, "15m": self.c15, "5m": self.c5}[timeframe]
         if closed_only:
             # Deliberately do NOT filter here in tests; production pipeline must still reject open candles.
             return rows[-limit:]
@@ -86,9 +89,9 @@ def test_cooldown_uses_production_transition_and_expiry():
     assert "BTCUSDT" not in sc.watchlist.cooldown_symbols
 
 
-def test_cooldown_blocks_context_reentry():
+def test_cooldown_blocks_trend_reentry():
     st = SymbolState(symbol="BTCUSDT", state=SetupState.COOLDOWN, cooldown_until=NOW + timedelta(minutes=60))
-    result = PipelineStateMachine.evaluate_15m_context(st, tuple(candle("15m", i) for i in range(24, -1, -1)))
+    result = PipelineStateMachine.evaluate_1h_trend(st, tuple(candle("1H", i, close=str(130 - i)) for i in range(24, -1, -1)))
     assert st.state is SetupState.COOLDOWN
     assert isinstance(result, bool)
 
@@ -112,10 +115,10 @@ def test_new_5m_candle_is_evaluated_once_more():
     assert strategy.evaluate.call_count == 2
 
 
-def test_same_15m_context_not_processed_twice():
+def test_same_1h_trend_not_processed_twice():
     rt, sc, _ = runtime_for()
-    original = PipelineStateMachine.evaluate_15m_context
-    with patch.object(PipelineStateMachine, "evaluate_15m_context", wraps=original) as spy:
+    original = PipelineStateMachine.evaluate_1h_trend
+    with patch.object(PipelineStateMachine, "evaluate_1h_trend", wraps=original) as spy:
         asyncio.run(rt._run_cycle()); first = spy.call_count
         asyncio.run(rt._run_cycle())
         assert first == 1
@@ -129,12 +132,29 @@ def test_open_5m_candle_cannot_reach_strategy():
     strategy.evaluate.assert_not_called()
 
 
-def test_open_15m_candle_cannot_reach_context_evaluator():
-    market = FakeMarket(c15=[candle("15m", closed=False)], c5=[candle("5m", closed=False)])
+def test_open_1h_candle_cannot_reach_trend_evaluator():
+    market = FakeMarket(c1h=[candle("1H", closed=False)], c15=[candle("15m", closed=False)], c5=[candle("5m", closed=False)])
     rt, _, _ = runtime_for(market=market)
-    with patch.object(PipelineStateMachine, "evaluate_15m_context", wraps=PipelineStateMachine.evaluate_15m_context) as spy:
+    with patch.object(PipelineStateMachine, "evaluate_1h_trend", wraps=PipelineStateMachine.evaluate_1h_trend) as spy:
         asyncio.run(rt._run_cycle())
         spy.assert_not_called()
+
+
+def test_scanner_decision_path_fetches_only_closed_1h_15m_5m_candles():
+    market = FakeMarket()
+    rt, _, strategy = runtime_for(market=market)
+
+    asyncio.run(rt._run_cycle())
+
+    assert market.calls == [
+        ("BTCUSDT", "1H", 60, True),
+        ("BTCUSDT", "15m", 30, True),
+        ("BTCUSDT", "5m", 200, True),
+    ]
+    strategy.evaluate.assert_awaited_once()
+    assert strategy.evaluate.await_args.kwargs["htf_candles"] == market.c1h
+    assert strategy.evaluate.await_args.kwargs["trend_candles"] == market.c15
+    assert strategy.evaluate.await_args.kwargs["entry_candles"] == market.c5
 
 
 
