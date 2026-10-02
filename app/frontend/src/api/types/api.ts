@@ -24,7 +24,7 @@ export interface RequestOptions extends RequestInit {
 // ==========================================
 
 export interface HealthCheckResponse {
-  status: 'ok' | 'unhealthy' | 'degraded';
+  status: 'healthy' | 'unhealthy' | 'degraded' | 'ok';|status: 'healthy' | 'unhealthy' | 'degraded' | 'ok';|status: 'healthy' | 'unhealthy' | 'degraded' | 'ok';
   backend_healthy: boolean;
   bybit_connected: boolean;
   db_healthy: boolean;
@@ -79,3 +79,4 @@ export interface PaginationMeta {
   hasNextPage: boolean;
   hasPrevPage: boolean;
 }
+

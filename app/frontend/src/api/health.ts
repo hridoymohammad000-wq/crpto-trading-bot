@@ -6,11 +6,11 @@ import { HealthCheckResponse, RequestOptions } from './types';
  * Endpoint: GET /health
  */
 export async function getHealth(options?: RequestOptions): Promise<HealthCheckResponse> {
-  const response = await apiClient.get<unknown>('/health', options);
-  if (!response || typeof response !== 'object' || !('status' in response) || response.status !== 'ok') {
+  const response = await apiClient.get<HealthCheckResponse>('/health', options);
+  if (!response || typeof response !== 'object' || !('status' in response)) {
     throw new ApiClientError('Invalid response from GET /health.', undefined, 'INVALID_RESPONSE');
   }
-  return { status: 'ok' };
+  return response;
 }
 
 export const healthApi = {
