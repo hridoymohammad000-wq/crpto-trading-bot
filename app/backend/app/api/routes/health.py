@@ -85,6 +85,8 @@ async def health(request: Request) -> dict[str, Any]:
     elif stale_reconciliation:
         status = "degraded"
 
+    watchdog = getattr(request.app.state, "health_watchdog", None)
+    
     return {
         "status": status,
         "backend_healthy": True,
@@ -98,6 +100,12 @@ async def health(request: Request) -> dict[str, Any]:
         "last_order_timestamp": last_order_time.isoformat() if hasattr(last_order_time, "isoformat") else last_order_time,
         "last_reconciliation_timestamp": last_recon_at.isoformat() if hasattr(last_recon_at, "isoformat") else last_recon_at,
         "uptime_seconds": uptime_seconds,
+        "watchdog_running": watchdog._running if watchdog else False,
+        "watchdog_last_check": watchdog.last_check.isoformat() if watchdog and watchdog.last_check else None,
+        "watchdog_last_success": watchdog.last_success.isoformat() if watchdog and watchdog.last_success else None,
+        "watchdog_active_incidents": list(watchdog._active_incidents.keys()) if watchdog else [],
+        "watchdog_last_alert": watchdog.last_alert.isoformat() if watchdog and watchdog.last_alert else None,
+        "watchdog_last_recovery": watchdog.last_recovery.isoformat() if watchdog and watchdog.last_recovery else None,
         "critical_states": {
             "scanner_stalled": scanner_stalled,
             "db_write_failure": db_write_failure,

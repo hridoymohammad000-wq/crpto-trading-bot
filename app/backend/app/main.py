@@ -44,6 +44,7 @@ from app.scanner.engine import ScannerEngine
 from app.strategies import StrategyService
 from app.strategies.lab_repository import StrategyLabRepository
 from app.strategies.lab_service import StrategyLabService
+from app.bot.watchdog import ScheduledHealthWatchdog
 from app.strategies.lab_workers import (
     AMDWorker,
     ICTWorker,
@@ -232,6 +233,19 @@ live_snapshot_publisher = LiveSnapshotPublisher(
 
 
 # ---------------------------------------------------------------------------
+# Watchdog
+# ---------------------------------------------------------------------------
+
+health_watchdog = ScheduledHealthWatchdog(
+    bot_runtime=bot_runtime,
+    scanner_engine=scanner_engine,
+    reconciliation_engine=reconciliation_engine,
+    persistence=persistence_database,
+    exchange=exchange_client,
+    interval_seconds=60,
+)
+
+# ---------------------------------------------------------------------------
 # App lifecycle
 # ---------------------------------------------------------------------------
 
@@ -242,8 +256,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await live_snapshot_publisher.start()
     await reconciliation_engine.reconcile()
     await block_tracker.start_daily_summary_loop()
+    await health_watchdog.start()
     yield
 
+    await health_watchdog.stop()
     await live_snapshot_publisher.stop()
     await bot_runtime.shutdown()
     await block_tracker.stop()
@@ -327,6 +343,7 @@ strategy_lab_service = StrategyLabService(
 app.state.strategy_lab_repository = strategy_lab_repository
 app.state.strategy_lab_service = strategy_lab_service
 app.state.exchange_client = exchange_client
+app.state.health_watchdog = health_watchdog
 app.state.backend_startup_time = datetime.now(timezone.utc)
 
 
