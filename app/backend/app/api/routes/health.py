@@ -31,7 +31,7 @@ async def health(request: Request) -> dict[str, Any]:
     scanner_running = True # Scanner doesn't have a task runner inside itself, it's run by bot_runtime.
     
     try:
-        persistence.execute("SELECT 1")
+        persistence.health()
         db_healthy = True
     except Exception:
         db_healthy = False

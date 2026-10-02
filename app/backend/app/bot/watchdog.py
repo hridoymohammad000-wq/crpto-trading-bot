@@ -86,7 +86,7 @@ class ScheduledHealthWatchdog:
             
         # 3. Database unavailable or DB write failure
         try:
-            self._persistence.execute("SELECT 1")
+            self._persistence.health()
         except Exception:
             current_incidents.add("Database unavailable or DB write failure")
             
@@ -150,7 +150,7 @@ class ScheduledHealthWatchdog:
         msg += f"<b>Backend:</b> {'UP' if self._bot_runtime.worker_running else 'DOWN'}\n"
         msg += f"<b>Bybit:</b> {'CONNECTED' if getattr(self._exchange, 'is_connected', lambda: True)() else 'DISCONNECTED'}\n"
         try:
-            self._persistence.execute("SELECT 1")
+            self._persistence.health()
             db_status = "HEALTHY"
         except Exception:
             db_status = "UNHEALTHY"

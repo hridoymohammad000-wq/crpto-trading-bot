@@ -18,7 +18,7 @@ def mock_deps():
     recon._last_time = datetime.now(timezone.utc).isoformat()
     
     persistence = MagicMock()
-    persistence.execute.return_value = None
+    persistence.health.return_value = {"status": "ok"}
     
     exchange = MagicMock()
     exchange.is_connected.return_value = True
@@ -143,7 +143,7 @@ async def test_watchdog_multiple_simultaneous(mock_deps):
     watchdog = ScheduledHealthWatchdog(bot_runtime, scanner, recon, persistence, exchange, interval_seconds=1)
     
     bot_runtime.worker_running = False
-    persistence.execute.side_effect = Exception("DB dead")
+    persistence.health.side_effect = Exception("DB dead")
     
     with patch("app.bot.watchdog.send_telegram_message", new_callable=AsyncMock) as mock_send:
         await watchdog._check_health()
