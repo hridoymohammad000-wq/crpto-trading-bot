@@ -24,7 +24,26 @@ export interface RequestOptions extends RequestInit {
 // ==========================================
 
 export interface HealthCheckResponse {
-  status: 'ok';
+  status: 'ok' | 'unhealthy';
+  backend_healthy: boolean;
+  bybit_connected: boolean;
+  db_healthy: boolean;
+  scanner_running: boolean;
+  position_manager_running: boolean;
+  bot_status: string;
+  uptime_seconds: number;
+  last_scan_at: string | null;
+  last_reconciled_at: string | null;
+  last_signal_time: string | null;
+  last_order_time: string | null;
+  open_positions: number;
+  critical_states: {
+    bybit_disconnected: boolean;
+    scanner_stalled: boolean;
+    db_write_failure: boolean;
+    stale_reconciliation: boolean;
+    manager_inactive: boolean;
+  };
 }
 
 // ==========================================

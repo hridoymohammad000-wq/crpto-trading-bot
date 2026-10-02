@@ -11,6 +11,7 @@ export interface AccountSummary {
   equity?: number;
   availableBalance?: number;
   availableTradingCapacity?: number;
+  margin_used?: number;
   capacitySource?: string;
   dailyPnl?: number;
   dailyPnlPercentage?: number;

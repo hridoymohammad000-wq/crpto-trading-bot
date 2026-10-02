@@ -100,7 +100,9 @@ class LiveSnapshotPublisher:
                 {
                     "balance": _num(account.balance),
                     "equity": _num(account.equity),
-                    "availableBalance": _num(account.available_balance),
+                    "availableBalance": _num(account.available_trading_capacity),
+                    "availableTradingCapacity": _num(account.available_trading_capacity),
+                    "capacitySource": account.capacity_source,
                     "unrealizedPnl": _num(account.unrealized_pnl) if account.unrealized_pnl is not None else 0.0,
                 },
             )
@@ -126,9 +128,12 @@ class LiveSnapshotPublisher:
                     "current": mark,
                     "quantity": qty,
                     "positionValue": value,
+                    "marginUsed": _num(row.margin_used),
+                    "breakEvenPrice": _num(row.break_even_price),
                     "sl": _num(row.stop_loss) or 0.0,
                     "tp": _num(row.take_profit) or 0.0,
                     "unrealizedPnl": upl,
+                    "realizedPnl": _num(row.realized_pnl) or 0.0,
                     "pnlPercentage": pnl_pct,
                     "currentR": "0.00R",
                     "duration": "—",
@@ -144,6 +149,11 @@ class LiveSnapshotPublisher:
                     "position": payload,
                     "current": mark,
                     "unrealizedPnl": upl,
+                    "realizedPnl": payload["realizedPnl"],
+                    "positionValue": value,
+                    "marginUsed": payload["marginUsed"],
+                    "breakEvenPrice": payload["breakEvenPrice"],
+                    "leverage": payload["leverage"],
                     "pnlPercentage": pnl_pct,
                     "sl": payload["sl"],
                     "tp": payload["tp"],
@@ -168,3 +178,4 @@ class LiveSnapshotPublisher:
             "system_event",
             {"level": "error", "message": f"Live data refresh error ({category})", "details": message},
         )
+

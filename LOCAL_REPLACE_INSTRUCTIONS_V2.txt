@@ -1,0 +1,21 @@
+LOCAL FIX PACKAGE V2
+====================
+
+1) Back up your current local backend .env file. This ZIP intentionally does NOT include .env.
+2) Extract this ZIP.
+3) Replace your local project files with the extracted folder contents.
+4) Restore/keep your existing app/backend/.env.
+5) Do NOT push anything to GitHub until local verification is complete.
+
+Verify backend:
+  cd app\backend
+  python -m pytest -q
+
+Verify frontend:
+  cd app\frontend
+  npm test
+  npm run build
+
+Extra V2 checks:
+- If scanner API is temporarily unavailable during first dashboard load, chart symbols retry after ~5 seconds instead of waiting 60 seconds.
+- If Bybit returns a non-zero retCode, /account now returns the safe Bybit error code/message instead of only "invalid response".

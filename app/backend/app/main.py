@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import FastAPI
@@ -241,7 +242,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await live_snapshot_publisher.start()
     await reconciliation_engine.reconcile()
     await block_tracker.start_daily_summary_loop()
-
     yield
 
     await live_snapshot_publisher.stop()
@@ -326,6 +326,8 @@ strategy_lab_service = StrategyLabService(
 
 app.state.strategy_lab_repository = strategy_lab_repository
 app.state.strategy_lab_service = strategy_lab_service
+app.state.exchange_client = exchange_client
+app.state.backend_startup_time = datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -350,3 +352,7 @@ app.include_router(integrations_router)
 app.include_router(ai_router)
 app.include_router(diagnostics_router)
 app.include_router(strategy_lab_router)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

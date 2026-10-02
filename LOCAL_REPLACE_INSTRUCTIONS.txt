@@ -1,0 +1,15 @@
+LOCAL REPLACEMENT
+
+1) Back up your existing project folder.
+2) Keep/copy your existing app\backend\.env separately. This ZIP intentionally does not contain .env.
+3) Extract this ZIP.
+4) Replace your local project files with the extracted crypto-trading-bot-local-fixes folder contents.
+5) Backend verification:
+   cd app\backend
+   python -m pytest -q
+6) Frontend verification:
+   cd ..\frontend
+   npm ci
+   npm test
+   npm run build
+7) Do not git push until you have checked the UI locally.

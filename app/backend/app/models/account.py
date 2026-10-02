@@ -40,6 +40,8 @@ class PositionResponse(BaseModel):
     mark_price: Decimal | None = None
     position_value: Decimal | None = None
     leverage: Decimal | None = None
+    margin_used: Decimal | None = None
+    break_even_price: Decimal | None = None
     unrealized_pnl: Decimal | None = None
     stop_loss: Decimal | None = None
     take_profit: Decimal | None = None

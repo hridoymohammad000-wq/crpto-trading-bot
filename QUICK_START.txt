@@ -1,0 +1,25 @@
+CRYPTO BOT LOCAL PATCH - QUICK START
+====================================
+
+After extracting/replacing locally:
+
+1. Keep/copy your existing app\backend\.env into the patched folder.
+   Do NOT share API keys or secrets.
+
+2. Double-click START_LOCAL.cmd
+   - starts backend on 127.0.0.1:8000
+   - starts frontend using its Vite dev command
+   - installs frontend dependencies only if node_modules is missing
+
+3. To verify everything in one go, double-click TEST_ALL.cmd
+   - backend pytest
+   - frontend tests
+   - frontend production build
+
+No GitHub push is performed by these scripts.
+
+IMPORTANT REMAINING EXTERNAL CHECK
+----------------------------------
+If the UI reports a Bybit Demo API error, the V2 patch now exposes the Bybit retCode/retMsg safely.
+That is an environment/API-credential or Bybit-response issue and cannot be pre-filled in the ZIP because
+API keys/secrets must remain in your own .env file.

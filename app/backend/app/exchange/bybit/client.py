@@ -158,6 +158,9 @@ class Position:
     stop_loss: Decimal | None
     take_profit: Decimal | None
     liquidation_price: Decimal | None
+    margin_used: Decimal | None = None
+    break_even_price: Decimal | None = None
+    realized_pnl: Decimal | None = None
 
 
 class BybitDemoClient(ExchangeClient):
@@ -1045,7 +1048,10 @@ class BybitDemoClient(ExchangeClient):
             mark_price=cls._parse_decimal(value.get("markPrice")),
             position_value=cls._parse_decimal(value.get("positionValue")),
             leverage=cls._parse_decimal(value.get("leverage")),
+            margin_used=cls._parse_decimal(value.get("positionIM")),
+            break_even_price=cls._parse_decimal(value.get("breakEvenPrice")),
             unrealized_pnl=cls._parse_decimal(value.get("unrealisedPnl")),
+            realized_pnl=cls._parse_decimal(value.get("curRealisedPnl")),
             stop_loss=cls._parse_decimal(value.get("stopLoss")),
             take_profit=cls._parse_decimal(value.get("takeProfit")),
             liquidation_price=cls._parse_decimal(value.get("liqPrice")),

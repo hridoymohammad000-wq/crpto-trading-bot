@@ -10,6 +10,9 @@ interface BackendPosition {
   mark_price: string | number;
   position_value: string | number | null;
   leverage: string | number | null;
+  margin_used?: string | number | null;
+  break_even_price?: string | number | null;
+  realized_pnl?: string | number | null;
   unrealized_pnl: string | number | null;
   stop_loss: string | number | null;
   take_profit: string | number | null;
@@ -30,6 +33,9 @@ function normalizePosition(p: BackendPosition): Position {
   const sl = num(p.stop_loss);
   const tp = num(p.take_profit);
   const leverage = num(p.leverage, 1);
+  const marginUsed = num(p.margin_used, leverage > 0 ? positionValue / leverage : 0);
+  const breakEvenPrice = num(p.break_even_price, 0);
+  const realizedPnl = num(p.realized_pnl, 0);
 
   const pnlPercentage =
     positionValue !== 0
@@ -61,6 +67,9 @@ function normalizePosition(p: BackendPosition): Position {
     currentR,
     duration: '—',
     leverage,
+    marginUsed,
+    breakEvenPrice,
+    realizedPnl,
     riskAmount,
     openedTime: '—',
   };

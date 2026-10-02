@@ -57,6 +57,10 @@ export interface PositionUpdatedPayload {
   position?: Partial<Position>;
   current?: number;
   unrealizedPnl?: number;
+  marginUsed?: number;
+  breakEvenPrice?: number;
+  positionValue?: number;
+  leverage?: number;
   pnlPercentage?: number;
   currentR?: string;
   sl?: number;

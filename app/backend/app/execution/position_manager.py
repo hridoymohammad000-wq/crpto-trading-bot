@@ -130,6 +130,9 @@ class PositionManager:
                 "PositionManager: Exchange amend request FAILED for %s: %s",
                 position.symbol, exc,
             )
+            from app.notifications.telegram import send_telegram_message
+            import asyncio
+            asyncio.ensure_future(send_telegram_message(f"🚨 <b>BE Modification Failure</b>\n\nFailed to move SL to BE for {position.symbol}.\nError: {exc}"))
             state.update({
                 "be_status": "FAILED",
                 "updated_at": datetime.now(timezone.utc).isoformat(),

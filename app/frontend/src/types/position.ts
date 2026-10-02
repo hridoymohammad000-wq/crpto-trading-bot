@@ -17,6 +17,9 @@ export interface Position {
   currentR: string | null | undefined;
   duration: string | null | undefined;
   leverage: number | null | undefined;
+  marginUsed: number | null | undefined;
+  breakEvenPrice: number | null | undefined;
+  realizedPnl: number | null | undefined;
   riskAmount: number | null | undefined;
   openedTime: string | null | undefined;
 }
