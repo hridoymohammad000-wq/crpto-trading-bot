@@ -24,7 +24,7 @@ export interface RequestOptions extends RequestInit {
 // ==========================================
 
 export interface HealthCheckResponse {
-  status: 'healthy' | 'unhealthy' | 'degraded' | 'ok';|status: 'healthy' | 'unhealthy' | 'degraded' | 'ok';|status: 'healthy' | 'unhealthy' | 'degraded' | 'ok';
+  status: 'healthy' | 'unhealthy' | 'degraded' | 'ok';
   backend_healthy: boolean;
   bybit_connected: boolean;
   db_healthy: boolean;
