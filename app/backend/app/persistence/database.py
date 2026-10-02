@@ -161,6 +161,7 @@ class PersistenceDatabase:
             open_fee TEXT,
             close_fee TEXT,
             order_id TEXT,
+            order_link_id TEXT,
             created_at TEXT,
             updated_at TEXT,
             synced_at TEXT NOT NULL,
@@ -359,6 +360,7 @@ class PersistenceDatabase:
             "take_profit": "TEXT",
             "exit_reason": "TEXT",
             "diagnostic_reason": "TEXT",
+            "order_link_id": "TEXT",
         }
         for column, column_type in additions.items():
             if column not in existing:
@@ -634,6 +636,7 @@ class PersistenceDatabase:
         synced_at = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             for trade in trades:
+                trade_order_link_id = getattr(trade, "order_link_id", None)
                 trade_key = trade.order_id or "|".join(
                     [
                         trade.symbol,
@@ -649,14 +652,15 @@ class PersistenceDatabase:
                     """
                     INSERT INTO closed_trades (
                         trade_key, symbol, side, quantity, entry_price, exit_price,
-                        realized_pnl, open_fee, close_fee, order_id, created_at,
-                        updated_at, synced_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        realized_pnl, open_fee, close_fee, order_id, order_link_id,
+                        created_at, updated_at, synced_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(trade_key) DO UPDATE SET
                         side=excluded.side,
                         realized_pnl=excluded.realized_pnl,
                         open_fee=excluded.open_fee,
                         close_fee=excluded.close_fee,
+                        order_link_id=COALESCE(excluded.order_link_id, closed_trades.order_link_id),
                         updated_at=excluded.updated_at,
                         synced_at=excluded.synced_at
                     """,
@@ -671,11 +675,20 @@ class PersistenceDatabase:
                         str(trade.open_fee) if trade.open_fee is not None else None,
                         str(trade.close_fee) if trade.close_fee is not None else None,
                         trade.order_id,
+                        trade.order_link_id if hasattr(trade, 'order_link_id') else None,
                         trade.created_at.isoformat() if trade.created_at else None,
                         trade.updated_at.isoformat() if trade.updated_at else None,
                         synced_at,
                     ),
                 )
+                if trade_order_link_id:
+                    try:
+                        conn.execute(
+                            "UPDATE closed_trades SET order_link_id=? WHERE trade_key=? AND order_link_id IS NULL",
+                            (trade_order_link_id, trade_key),
+                        )
+                    except Exception:
+                        pass
 
     @staticmethod
     def _diagnose_sl_root_cause(
@@ -873,7 +886,7 @@ class PersistenceDatabase:
             if not execution:
                 closed_at = row["updated_at"] or row["created_at"] or row["synced_at"]
                 execution = conn.execute(
-                    "SELECT * FROM execution_submissions WHERE symbol=? AND quantity=? AND submitted_at<=? ORDER BY submitted_at DESC LIMIT 1",
+                    "SELECT * FROM execution_submissions WHERE symbol=? AND CAST(quantity AS REAL)=CAST(? AS REAL) AND submitted_at<=? ORDER BY submitted_at DESC LIMIT 1",
                     (row["symbol"], row["quantity"], closed_at),
                 ).fetchone()
 
@@ -990,10 +1003,24 @@ class PersistenceDatabase:
                 closed_at = row["updated_at"] or row["created_at"] or row["synced_at"]
                 execution = None
 
-                # First try the exchange order id. If Bybit's closed-PnL order id is
-                # the closing order rather than our entry order, fall back to the
-                # nearest earlier execution for the same symbol and quantity.
-                if row["order_id"]:
+                # FIX: Match priority: order_link_id > order_id > symbol+quantity(CAST)
+                trade_order_link_id = row["order_link_id"] if "order_link_id" in row.keys() else None
+                if trade_order_link_id:
+                    execution = conn.execute(
+                        """
+                        SELECT e.*, s.strategy
+                        FROM execution_submissions e
+                        LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
+                        WHERE e.order_link_id=?
+                        ORDER BY e.submitted_at DESC
+                        LIMIT 1
+                        """,
+                        (trade_order_link_id,),
+                    ).fetchone()
+                else:
+                    execution = None
+
+                if execution is None and row["order_id"]:
                     execution = conn.execute(
                         """
                         SELECT e.*, s.strategy
@@ -1013,7 +1040,7 @@ class PersistenceDatabase:
                         FROM execution_submissions e
                         LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
                         WHERE e.symbol=?
-                          AND e.quantity=?
+                          AND CAST(e.quantity AS REAL)=CAST(? AS REAL)
                           AND e.submitted_at<=?
                         ORDER BY e.submitted_at DESC
                         LIMIT 1
@@ -1105,6 +1132,7 @@ class PersistenceDatabase:
                         open_fee=Decimal(row["open_fee"]) if row["open_fee"] is not None else None,
                         close_fee=Decimal(row["close_fee"]) if row["close_fee"] is not None else None,
                         order_id=row["order_id"],
+                        order_link_id=row["order_link_id"] if "order_link_id" in row.keys() else None,
                         created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
                         updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
                         strategy=strategy,

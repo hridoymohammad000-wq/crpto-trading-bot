@@ -98,7 +98,7 @@ def test_bybit_closed_trade_history_is_parsed_from_demo_api() -> None:
         asyncio.run(client.disconnect())
 
     assert len(rows) == 1
-    assert rows[0].side == "SHORT"
+    assert rows[0].side == "LONG"
     assert rows[0].realized_pnl == Decimal("20")
     assert rows[0].quantity == Decimal("0.01")
 
@@ -142,6 +142,7 @@ class StubActivityService:
                         open_fee=t.open_fee,
                         close_fee=t.close_fee,
                         order_id=t.order_id,
+            order_link_id=None,
                         created_at=t.created_at,
                         updated_at=t.updated_at,
                     )
@@ -187,6 +188,7 @@ def test_sync_closed_trades_upserts_and_is_idempotent(tmp_path) -> None:
                     open_fee=Decimal("-0.3266"),
                     close_fee=Decimal("-0.3227"),
                     order_id="tao-close-1",
+                    order_link_id="tao-entry-1",
                     created_at=datetime(2026, 9, 21, 14, 3, 26, tzinfo=timezone.utc),
                     updated_at=datetime(2026, 9, 21, 14, 6, 2, tzinfo=timezone.utc),
                 ),
@@ -205,3 +207,6 @@ def test_sync_closed_trades_upserts_and_is_idempotent(tmp_path) -> None:
     assert len(rows) == 1
     assert rows[0].symbol == "TAOUSDT"
     assert rows[0].order_id == "tao-close-1"
+
+
+

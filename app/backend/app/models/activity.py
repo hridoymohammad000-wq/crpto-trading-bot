@@ -58,6 +58,7 @@ class ClosedTradeResponse(BaseModel):
     open_fee: Decimal | None = None
     close_fee: Decimal | None = None
     order_id: str | None = None
+    order_link_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     strategy: str | None = None

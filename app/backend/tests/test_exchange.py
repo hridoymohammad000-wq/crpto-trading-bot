@@ -646,11 +646,11 @@ def test_parse_closed_trade_mapping() -> None:
         "symbol": "TAOUSDT", "side": "Buy", "qty": "1", "closedPnl": "1",
         "avgEntryPrice": "100", "avgExitPrice": "101", "openFee": "0", "closeFee": "0"
     }
-    t_short = BybitDemoClient._parse_closed_trade(val_buy)
-    assert t_short.side == "SHORT"
+    t_long = BybitDemoClient._parse_closed_trade(val_buy)
+    assert t_long.side == "LONG"
     val_sell = {
         "symbol": "TAOUSDT", "side": "Sell", "qty": "1", "closedPnl": "1",
         "avgEntryPrice": "100", "avgExitPrice": "101", "openFee": "0", "closeFee": "0"
     }
-    t_long = BybitDemoClient._parse_closed_trade(val_sell)
-    assert t_long.side == "LONG"
+    t_short = BybitDemoClient._parse_closed_trade(val_sell)
+    assert t_short.side == "SHORT"

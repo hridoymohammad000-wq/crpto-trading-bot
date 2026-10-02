@@ -141,6 +141,7 @@ class ClosedTrade:
     open_fee: Decimal | None
     close_fee: Decimal | None
     order_id: str | None
+    order_link_id: str | None
     created_at: datetime | None
     updated_at: datetime | None
 
@@ -1008,7 +1009,7 @@ class BybitDemoClient(ExchangeClient):
         pnl = cls._parse_required_decimal(value.get("closedPnl"), "closed trade PnL")
         return ClosedTrade(
             symbol=symbol,
-            side="SHORT" if side == "Buy" else "LONG",
+            side="LONG" if side == "Buy" else "SHORT",
             quantity=qty,
             entry_price=cls._parse_decimal(value.get("avgEntryPrice")),
             exit_price=cls._parse_decimal(value.get("avgExitPrice")),
@@ -1016,6 +1017,7 @@ class BybitDemoClient(ExchangeClient):
             open_fee=cls._parse_decimal(value.get("openFee")),
             close_fee=cls._parse_decimal(value.get("closeFee")),
             order_id=value.get("orderId") if isinstance(value.get("orderId"), str) else None,
+            order_link_id=value.get("orderLinkId") if isinstance(value.get("orderLinkId"), str) else None,
             created_at=cls._parse_timestamp_ms(value.get("createdTime")),
             updated_at=cls._parse_timestamp_ms(value.get("updatedTime")),
         )
@@ -1161,3 +1163,7 @@ class BybitDemoClient(ExchangeClient):
             body["tpslMode"] = "Full"
 
         await self._post("/v5/position/trading-stop", body=body)
+
+
+
+

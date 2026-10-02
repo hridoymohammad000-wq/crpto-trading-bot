@@ -146,6 +146,7 @@ class ActivityService:
                 open_fee=row.open_fee,
                 close_fee=row.close_fee,
                 order_id=row.order_id,
+                order_link_id=row.order_link_id,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
