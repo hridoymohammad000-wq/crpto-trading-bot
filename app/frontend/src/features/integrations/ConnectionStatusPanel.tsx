@@ -100,9 +100,22 @@ export const ConnectionStatusPanel: React.FC<Props> = ({ backendStatus, websocke
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 15000);
-    return () => window.clearInterval(timer);
+    let timeoutId: number;
+    let isCancelled = false;
+
+    const poll = async () => {
+      await refresh();
+      if (!isCancelled) {
+        timeoutId = window.setTimeout(poll, 15000);
+      }
+    };
+
+    void poll();
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [refresh]);
 
   const bybitLive = Boolean(status?.bybit.configured) && reconciliationStatus === 'SYNCED';

@@ -181,6 +181,7 @@ class ExecutionService:
                 stop_loss=None, # Two-step execution
                 take_profit=None, # Two-step execution
                 order_link_id=order_link_id,
+                allow_unprotected_entry=True,
             )
         except BybitConnectionError as exc:
             unknown = submitted.model_copy(
@@ -205,6 +206,16 @@ class ExecutionService:
             )
             self._persist(rejected)
             return rejected
+        except ValueError as exc:
+            failed = submitted.model_copy(
+                update={
+                    "status": ExecutionStatus.FAILED,
+                    "submitted_at": datetime.now(timezone.utc),
+                    "message": f"Local execution validation failed: {exc}",
+                }
+            )
+            self._persist(failed)
+            return failed
         except Exception as exc:
             unknown = submitted.model_copy(
                 update={

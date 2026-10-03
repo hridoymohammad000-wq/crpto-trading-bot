@@ -15,42 +15,42 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health(request: Request) -> dict[str, Any]:
+def health(request: Request) -> dict[str, Any]:
     bot_runtime = cast(BotRuntime, request.app.state.bot_runtime)
     scanner_engine = cast(ScannerEngine, request.app.state.scanner_engine)
     reconciliation_engine = cast(ReconciliationEngine, request.app.state.reconciliation_engine)
-    persistence = cast(PersistenceDatabase, request.app.state.persistence_database)
-    exchange = cast(BybitDemoClient, request.app.state.exchange_client)
     activity_repo = cast(ActivityRepository, request.app.state.activity_repository)
     backend_startup_time = request.app.state.backend_startup_time
+    watchdog = getattr(request.app.state, "health_watchdog", None)
 
     now = datetime.now(timezone.utc)
     uptime_seconds = (now - backend_startup_time).total_seconds()
 
     bot_snap = bot_runtime.snapshot()
-    scanner_running = True # Scanner doesn't have a task runner inside itself, it's run by bot_runtime.
-    
-    try:
-        persistence.health()
-        db_healthy = True
-    except Exception:
-        db_healthy = False
+    scanner_running = True
 
-    bybit_connected = exchange.is_connected() if hasattr(exchange, "is_connected") else True
-    # We will just assume True if it doesn't have a status property or if it isn't easy to fetch, 
-    # but let's check its `_client` or something if needed. Since it's demo we assume it's connected if we can query.
-    last_bybit_success = None # Hard to get unless we query directly
+    watchdog_active_incidents = watchdog._active_incidents if watchdog else {}
+
+    # Rely on watchdog state instead of executing fresh remote API/DB calls
+    db_healthy = "Database unavailable or DB write failure" not in watchdog_active_incidents
+    bybit_connected = "Bybit disconnected / auth/API failure" not in watchdog_active_incidents
+
+    last_bybit_success = watchdog.last_success if watchdog else None
 
     position_manager_running = bot_runtime.worker_running
 
-    last_scan_at = scanner_engine._last_universe_refresh if hasattr(scanner_engine, "_last_universe_refresh") else None
-    last_recon_at = reconciliation_engine._last_time if hasattr(reconciliation_engine, "_last_time") else None
+    last_scan_at = getattr(scanner_engine, "_last_universe_refresh", None)
+    last_recon_at = getattr(reconciliation_engine, "_last_time", None)
 
-    latest_signals = persistence.list_signals(limit=1)
-    last_signal_time = latest_signals[0].signal_time if latest_signals else None
+    # Use in-memory signals buffer instead of querying DB
+    last_signal_time = None
+    if hasattr(activity_repo, "_lock") and hasattr(activity_repo, "_signals"):
+        with activity_repo._lock:
+            if activity_repo._signals:
+                last_signal_time = activity_repo._signals[-1].signal_time
 
-    latest_trades = persistence.list_closed_trades(limit=1)
-    last_order_time = latest_trades[0].created_at if latest_trades else None
+    # Omit heavy closed trades lookup - return None as permitted by schema
+    last_order_time = None
 
     # Determine critical states
     scanner_stalled = False
@@ -80,8 +80,7 @@ async def health(request: Request) -> dict[str, Any]:
         except Exception:
             pass
 
-    # For BE failure we might not have a direct boolean without looking deep into activity repo
-    repeated_be_failure = False # Not easily available here, will keep false for now
+    repeated_be_failure = False 
 
     status = "healthy"
     if db_write_failure or bybit_disconnected or scanner_stalled or manager_inactive:
@@ -89,8 +88,6 @@ async def health(request: Request) -> dict[str, Any]:
     elif stale_reconciliation:
         status = "degraded"
 
-    watchdog = getattr(request.app.state, "health_watchdog", None)
-    
     return {
         "status": status,
         "backend_healthy": True,
@@ -107,7 +104,7 @@ async def health(request: Request) -> dict[str, Any]:
         "watchdog_running": watchdog._running if watchdog else False,
         "watchdog_last_check": watchdog.last_check.isoformat() if watchdog and watchdog.last_check else None,
         "watchdog_last_success": watchdog.last_success.isoformat() if watchdog and watchdog.last_success else None,
-        "watchdog_active_incidents": list(watchdog._active_incidents.keys()) if watchdog else [],
+        "watchdog_active_incidents": list(watchdog_active_incidents.keys()),
         "watchdog_last_alert": watchdog.last_alert.isoformat() if watchdog and watchdog.last_alert else None,
         "watchdog_last_recovery": watchdog.last_recovery.isoformat() if watchdog and watchdog.last_recovery else None,
         "critical_states": {
