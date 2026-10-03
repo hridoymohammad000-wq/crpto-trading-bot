@@ -190,6 +190,17 @@ class FakeExecutionExchange:
         self.order_calls.append(kwargs)
         return OrderAcknowledgement(order_id="order-42", order_link_id=str(kwargs["order_link_id"]))
 
+    async def set_trading_stop(self, **kwargs: object) -> None:
+        pass
+
+    async def get_order_by_link_id(self, symbol: str, order_link_id: str) -> dict[str, object] | None:
+        return {
+            "orderStatus": "Filled",
+            "avgPrice": "100.0",
+            "cumExecQty": "0.01",
+            "orderId": "order-42",
+        }
+
 
 def ready_decision() -> RiskDecision:
     return RiskDecision(
@@ -201,12 +212,13 @@ def ready_decision() -> RiskDecision:
         entry=Decimal("100"),
         quantity=Decimal("0.0109"),
         stop_loss=Decimal("99"),
-        take_profit=Decimal("102"),
-        risk_reward_ratio=Decimal("2"),
+        take_profit=Decimal("104"),
+        risk_reward_ratio=Decimal("4"),
         leverage=Decimal("3"),
         account_equity=Decimal("1000"),
         available_balance=Decimal("1000"),
         risk_amount=Decimal("10"),
+        max_open_risk_amount=Decimal("20"),
     )
 
 
@@ -216,7 +228,7 @@ def test_execution_service_submits_only_ready_decision(tmp_path) -> None:
     service = ExecutionService(exchange, db)  # type: ignore[arg-type]
     result = asyncio.run(service.execute(ready_decision()))
 
-    assert result.status.value == "ACKNOWLEDGED"
+    assert result.status.value == "FILLED"
     assert result.order_id == "order-42"
     assert exchange.leverage_calls == [("BTCUSDT", Decimal("3"))]
     assert exchange.order_calls[0]["side"] == "Buy"
@@ -370,10 +382,10 @@ def test_execution_intent_is_durable_before_bybit_post(tmp_path) -> None:
     result = asyncio.run(service.execute(ready_decision()))
 
     assert exchange.persisted_before_post is True
-    assert result.status is ExecutionStatus.ACKNOWLEDGED
+    assert result.status is ExecutionStatus.FILLED
     stored = db.get_execution("abc123")
     assert stored is not None
-    assert stored.status is ExecutionStatus.ACKNOWLEDGED
+    assert stored.status is ExecutionStatus.FILLED
     assert stored.execution_intent_id == result.execution_intent_id
     assert stored.order_link_id == result.order_link_id
     assert stored.request_hash == result.request_hash
@@ -387,8 +399,8 @@ def test_execute_is_idempotent_for_existing_durable_intent(tmp_path) -> None:
     first = asyncio.run(service.execute(ready_decision()))
     second = asyncio.run(service.execute(ready_decision()))
 
-    assert first.status is ExecutionStatus.ACKNOWLEDGED
-    assert second.status is ExecutionStatus.ACKNOWLEDGED
+    assert first.status is ExecutionStatus.FILLED
+    assert second.status is ExecutionStatus.FILLED
     assert first.execution_intent_id == second.execution_intent_id
     assert first.order_link_id == second.order_link_id
     assert len(exchange.order_calls) == 1

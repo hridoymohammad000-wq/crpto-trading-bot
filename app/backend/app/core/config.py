@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     RISK_PER_TRADE_PCT: str = "1"
     DAILY_LOSS_LIMIT_PCT: str = "3"
     MINIMUM_RR: str = "2"
+    MAX_SLIPPAGE_PCT: str = "1.5"
     DEFAULT_LEVERAGE: str = "3"
     MAX_LEVERAGE: str = "10"
     MAX_ACTIVE_POSITIONS: int = 3

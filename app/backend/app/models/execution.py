@@ -52,3 +52,9 @@ class ExecutionResult(BaseModel):
     cumulative_filled_quantity: Decimal | None = None
     average_fill_price: Decimal | None = None
     message: str | None = None
+    slippage_abs: Decimal | None = None
+    slippage_pct: Decimal | None = None
+    intended_risk_amount: Decimal | None = None
+    actual_risk_amount: Decimal | None = None
+    final_rr: Decimal | None = None
+    fees: Decimal | None = None

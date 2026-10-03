@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
+
+from app.core.config import Settings
 
 from app.exchange.bybit import BybitDemoClient
 from app.exchange.bybit.exceptions import BybitAPIError, BybitConnectionError
@@ -169,13 +172,14 @@ class ExecutionService:
         )
         self._persist(submitted)
 
+        # Step A: Place the market entry order WITHOUT attaching final SL/TP.
         try:
             order = await self._exchange.place_order(
                 symbol=decision.symbol,
                 side="Buy" if decision.side.value == "BUY" else "Sell",
                 quantity=normalized.quantity,
-                stop_loss=normalized.stop_loss,
-                take_profit=normalized.take_profit,
+                stop_loss=None, # Two-step execution
+                take_profit=None, # Two-step execution
                 order_link_id=order_link_id,
             )
         except BybitConnectionError as exc:
@@ -221,11 +225,220 @@ class ExecutionService:
                 "submitted_at": datetime.now(timezone.utc),
                 "order_id": order.order_id,
                 "order_link_id": order.order_link_id or order_link_id,
-                "message": "Bybit Demo accepted the order request; fill not yet assumed",
+                "message": "Bybit Demo accepted the order request; awaiting fill data",
             }
         )
         self._persist(acknowledged)
-        return acknowledged
+
+        # Step B: Wait for fill and get actual_avg_fill_price
+        fill_price = None
+        filled_qty = Decimal("0")
+        for _ in range(10):
+            await asyncio.sleep(0.5)
+            try:
+                row = await self._exchange.get_order_by_link_id(
+                    symbol=decision.symbol,
+                    order_link_id=order_link_id,
+                )
+                if row and row.get("orderStatus") in ("Filled", "PartiallyFilled"):
+                    fill_price_str = row.get("avgPrice")
+                    if fill_price_str:
+                        fill_price = Decimal(str(fill_price_str))
+                    qty_str = row.get("cumExecQty")
+                    if qty_str:
+                        filled_qty = Decimal(str(qty_str))
+                    if fill_price and fill_price > 0:
+                        break
+            except Exception as e:
+                pass
+
+        if not fill_price or fill_price <= 0:
+            unknown = acknowledged.model_copy(
+                update={
+                    "status": ExecutionStatus.UNKNOWN_RECONCILING,
+                    "message": "Market order sent but fill price not received. Position protection unverified.",
+                }
+            )
+            self._persist(unknown)
+            return unknown
+
+        # Calculate Slippage
+        intended_entry = decision.entry
+        slippage_abs = (fill_price - intended_entry) if decision.side.value == "BUY" else (intended_entry - fill_price)
+        slippage_pct = (slippage_abs / intended_entry) * 100
+
+        # Validate Max Slippage
+        settings = Settings()
+        max_slippage = Decimal(settings.MAX_SLIPPAGE_PCT)
+        if slippage_pct > max_slippage:
+            # Slippage exceeded, emergency close
+            try:
+                await self._exchange.place_order(
+                    symbol=decision.symbol,
+                    side="Sell" if decision.side.value == "BUY" else "Buy",
+                    quantity=filled_qty,
+                    reduce_only=True,
+                    order_link_id=f"close-{order_link_id}",
+                )
+            except Exception:
+                pass
+            failed = acknowledged.model_copy(
+                update={
+                    "status": ExecutionStatus.FAILED,
+                    "message": f"Slippage exceeded limit ({slippage_pct:.2f}% > {max_slippage}%). Emergency closed.",
+                    "average_fill_price": fill_price,
+                    "cumulative_filled_quantity": filled_qty,
+                    "slippage_abs": slippage_abs,
+                    "slippage_pct": slippage_pct,
+                }
+            )
+            self._persist(failed)
+            return failed
+
+        # Recalculate intended risk distance (absolute difference between signal price and intended stop loss)
+        intended_risk_distance = abs(intended_entry - decision.stop_loss)
+        
+        # Calculate new SL and TP anchored to actual fill price
+        if decision.side.value == "BUY":
+            final_stop_loss = fill_price - intended_risk_distance
+            final_take_profit = fill_price + (intended_risk_distance * decision.risk_reward_ratio)
+        else:
+            final_stop_loss = fill_price + intended_risk_distance
+            final_take_profit = fill_price - (intended_risk_distance * decision.risk_reward_ratio)
+
+        # Ensure correct formatting
+        final_stop_loss = final_stop_loss.quantize(decision.stop_loss)
+        final_take_profit = final_take_profit.quantize(decision.take_profit)
+
+        # Actual Risk Amount calculation
+        actual_risk_distance = abs(fill_price - final_stop_loss)
+        actual_risk_amount = actual_risk_distance * filled_qty
+        
+        # Check against tolerance (account risk amount + max tolerance)
+        max_allowed_risk = decision.max_open_risk_amount if decision.max_open_risk_amount else decision.risk_amount * Decimal("1.5")
+        if actual_risk_amount > max_allowed_risk:
+            # Risk too high due to slippage, emergency close
+            try:
+                await self._exchange.place_order(
+                    symbol=decision.symbol,
+                    side="Sell" if decision.side.value == "BUY" else "Buy",
+                    quantity=filled_qty,
+                    reduce_only=True,
+                    order_link_id=f"close-risk-{order_link_id}",
+                )
+            except Exception:
+                pass
+            failed = acknowledged.model_copy(
+                update={
+                    "status": ExecutionStatus.FAILED,
+                    "message": f"Actual risk amount {actual_risk_amount} exceeds limit {max_allowed_risk}. Emergency closed.",
+                    "average_fill_price": fill_price,
+                    "cumulative_filled_quantity": filled_qty,
+                    "slippage_abs": slippage_abs,
+                    "slippage_pct": slippage_pct,
+                    "actual_risk_amount": actual_risk_amount,
+                }
+            )
+            self._persist(failed)
+            return failed
+
+        # Final R:R validation (including taker fee assumption)
+        taker_fee_rate = Decimal("0.00055") # 0.055% bybit standard
+        fee_amount = (fill_price * filled_qty) * taker_fee_rate * 2 # Entry + Exit
+        effective_profit = abs(final_take_profit - fill_price) * filled_qty - fee_amount
+        effective_loss = actual_risk_amount + fee_amount
+        
+        final_rr = effective_profit / effective_loss if effective_loss > 0 else decision.risk_reward_ratio
+        min_rr = Decimal(settings.MINIMUM_RR)
+        
+        if final_rr < min_rr:
+            # RR degraded too much, emergency close
+            try:
+                await self._exchange.place_order(
+                    symbol=decision.symbol,
+                    side="Sell" if decision.side.value == "BUY" else "Buy",
+                    quantity=filled_qty,
+                    reduce_only=True,
+                    order_link_id=f"close-rr-{order_link_id}",
+                )
+            except Exception:
+                pass
+            failed = acknowledged.model_copy(
+                update={
+                    "status": ExecutionStatus.FAILED,
+                    "message": f"Final effective RR {final_rr:.2f} < {min_rr}. Emergency closed.",
+                    "average_fill_price": fill_price,
+                    "cumulative_filled_quantity": filled_qty,
+                    "slippage_abs": slippage_abs,
+                    "slippage_pct": slippage_pct,
+                    "actual_risk_amount": actual_risk_amount,
+                    "final_rr": final_rr,
+                    "fees": fee_amount,
+                }
+            )
+            self._persist(failed)
+            return failed
+
+        # Safety loop: Try to place the Trading Stop (SL/TP)
+        stop_success = False
+        for attempt in range(3):
+            try:
+                await self._exchange.set_trading_stop(
+                    symbol=decision.symbol,
+                    stop_loss=final_stop_loss,
+                    take_profit=final_take_profit,
+                )
+                stop_success = True
+                break
+            except Exception as e:
+                await asyncio.sleep(1.0)
+                
+        if not stop_success:
+            # CRITICAL execution protection failure -> close position
+            try:
+                await self._exchange.place_order(
+                    symbol=decision.symbol,
+                    side="Sell" if decision.side.value == "BUY" else "Buy",
+                    quantity=filled_qty,
+                    reduce_only=True,
+                    order_link_id=f"close-prot-{order_link_id}",
+                )
+            except Exception:
+                pass
+            failed = acknowledged.model_copy(
+                update={
+                    "status": ExecutionStatus.FAILED,
+                    "message": "CRITICAL execution_protection_failure: Could not set SL/TP. Emergency closed.",
+                    "average_fill_price": fill_price,
+                    "cumulative_filled_quantity": filled_qty,
+                    "slippage_abs": slippage_abs,
+                    "slippage_pct": slippage_pct,
+                    "actual_risk_amount": actual_risk_amount,
+                    "final_rr": final_rr,
+                }
+            )
+            self._persist(failed)
+            return failed
+
+        # Final success
+        filled = acknowledged.model_copy(
+            update={
+                "status": ExecutionStatus.FILLED,
+                "message": "Order filled and SL/TP applied successfully based on actual fill price.",
+                "average_fill_price": fill_price,
+                "cumulative_filled_quantity": filled_qty,
+                "stop_loss": final_stop_loss,
+                "take_profit": final_take_profit,
+                "slippage_abs": slippage_abs,
+                "slippage_pct": slippage_pct,
+                "intended_risk_amount": decision.risk_amount,
+                "actual_risk_amount": actual_risk_amount,
+                "final_rr": final_rr,
+                "fees": fee_amount,
+            }
+        )
+        self._persist(filled)
+        return filled
 
     async def recover_unresolved(self) -> list[ExecutionResult]:
         """Resolve durable non-terminal intents from Bybit state after restart.

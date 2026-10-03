@@ -144,7 +144,13 @@ class PersistenceDatabase:
             higher_tf_ema_slow TEXT,
             higher_tf_ema_fast_previous TEXT,
             crossover_age_candles INTEGER,
-            signal_confidence INTEGER
+            signal_confidence INTEGER,
+            slippage_abs TEXT,
+            slippage_pct TEXT,
+            intended_risk_amount TEXT,
+            actual_risk_amount TEXT,
+            final_rr TEXT,
+            fees TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_execution_submitted_at
@@ -285,6 +291,12 @@ class PersistenceDatabase:
             "higher_tf_ema_fast_previous": "TEXT",
             "crossover_age_candles": "INTEGER",
             "signal_confidence": "INTEGER",
+            "slippage_abs": "TEXT",
+            "slippage_pct": "TEXT",
+            "intended_risk_amount": "TEXT",
+            "actual_risk_amount": "TEXT",
+            "final_rr": "TEXT",
+            "fees": "TEXT",
         }
         for column, column_type in additions.items():
             if column not in existing:
@@ -462,8 +474,9 @@ class PersistenceDatabase:
                     signal_id, execution_intent_id, risk_decision_id, request_hash,
                     symbol, side, status, submitted_at, order_id, order_link_id,
                     quantity, price, stop_loss, take_profit, leverage,
-                    cumulative_filled_quantity, average_fill_price, message
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cumulative_filled_quantity, average_fill_price, message,
+                    slippage_abs, slippage_pct, intended_risk_amount, actual_risk_amount, final_rr, fees
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(signal_id) DO UPDATE SET
                     execution_intent_id=COALESCE(excluded.execution_intent_id, execution_submissions.execution_intent_id),
                     risk_decision_id=COALESCE(excluded.risk_decision_id, execution_submissions.risk_decision_id),
@@ -479,7 +492,13 @@ class PersistenceDatabase:
                     leverage=COALESCE(excluded.leverage, execution_submissions.leverage),
                     cumulative_filled_quantity=COALESCE(excluded.cumulative_filled_quantity, execution_submissions.cumulative_filled_quantity),
                     average_fill_price=COALESCE(excluded.average_fill_price, execution_submissions.average_fill_price),
-                    message=excluded.message
+                    message=excluded.message,
+                    slippage_abs=COALESCE(excluded.slippage_abs, execution_submissions.slippage_abs),
+                    slippage_pct=COALESCE(excluded.slippage_pct, execution_submissions.slippage_pct),
+                    intended_risk_amount=COALESCE(excluded.intended_risk_amount, execution_submissions.intended_risk_amount),
+                    actual_risk_amount=COALESCE(excluded.actual_risk_amount, execution_submissions.actual_risk_amount),
+                    final_rr=COALESCE(excluded.final_rr, execution_submissions.final_rr),
+                    fees=COALESCE(excluded.fees, execution_submissions.fees)
                 """,
                 (
                     result.signal_id,
@@ -500,6 +519,12 @@ class PersistenceDatabase:
                     str(result.cumulative_filled_quantity) if result.cumulative_filled_quantity is not None else None,
                     str(result.average_fill_price) if result.average_fill_price is not None else None,
                     result.message,
+                    str(result.slippage_abs) if result.slippage_abs is not None else None,
+                    str(result.slippage_pct) if result.slippage_pct is not None else None,
+                    str(result.intended_risk_amount) if result.intended_risk_amount is not None else None,
+                    str(result.actual_risk_amount) if result.actual_risk_amount is not None else None,
+                    str(result.final_rr) if result.final_rr is not None else None,
+                    str(result.fees) if result.fees is not None else None,
                 ),
             )
 
@@ -616,6 +641,12 @@ class PersistenceDatabase:
                 else None
             ),
             message=row["message"],
+            slippage_abs=Decimal(row["slippage_abs"]) if "slippage_abs" in row.keys() and row["slippage_abs"] is not None else None,
+            slippage_pct=Decimal(row["slippage_pct"]) if "slippage_pct" in row.keys() and row["slippage_pct"] is not None else None,
+            intended_risk_amount=Decimal(row["intended_risk_amount"]) if "intended_risk_amount" in row.keys() and row["intended_risk_amount"] is not None else None,
+            actual_risk_amount=Decimal(row["actual_risk_amount"]) if "actual_risk_amount" in row.keys() and row["actual_risk_amount"] is not None else None,
+            final_rr=Decimal(row["final_rr"]) if "final_rr" in row.keys() and row["final_rr"] is not None else None,
+            fees=Decimal(row["fees"]) if "fees" in row.keys() and row["fees"] is not None else None,
         )
 
     def submitted_signal_ids(self) -> set[str]:
