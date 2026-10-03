@@ -3,13 +3,17 @@ import { Check, RotateCcw, Save, Shield, Sliders } from 'lucide-react';
 import { useBotSettings } from '../../hooks';
 import { StrategyKey, Timeframe, TradingSymbol } from '../../types';
 import { ConnectionStatusPanel } from '../integrations/ConnectionStatusPanel';
+import { SystemHealthDiagnostics } from './SystemHealthDiagnostics';
 import { ConnectionStatus } from '../../types';
+import { HealthCheckResponse, AccountSummary } from '../../api/types';
 
 export interface SettingsViewProps {
   className?: string;
   backendStatus: ConnectionStatus;
   websocketStatus: 'Connected' | 'Reconnecting' | 'Offline';
   reconciliationStatus?: string;
+  health: HealthCheckResponse | null;
+  account: AccountSummary;
 }
 
 const STRATEGIES: { key: StrategyKey; label: string; description: string }[] = [
@@ -87,7 +91,7 @@ function ChoiceGroup<T extends string>({ legend, values, selected, error, onTogg
   );
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ className = '', backendStatus, websocketStatus, reconciliationStatus }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ className = '', backendStatus, websocketStatus, reconciliationStatus, health, account }) => {
   const {
     settings,
     errors,
@@ -127,6 +131,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ className = '', back
           </span>
         </div>
       </div>
+
+      <SystemHealthDiagnostics
+        health={health}
+        account={account}
+        websocketStatus={websocketStatus}
+      />
 
       <ConnectionStatusPanel
         backendStatus={backendStatus}

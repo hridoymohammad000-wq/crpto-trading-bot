@@ -15,7 +15,7 @@ import { AIAnalystDrawer } from '../features/ai/AIAnalystDrawer';
 import { StaleDataBanner } from '../components/StaleDataBanner';
 import { ReconciliationAlerts } from '../components/ReconciliationAlerts';
 import { useDashboard } from '../hooks/useDashboard';
-import { RemoteStatusPanel } from '../components/RemoteStatusPanel';
+import { GlobalStatusIndicator } from '../components/GlobalStatusIndicator';
 
 export const DashboardPage: React.FC = () => {
   const [isAIDrawerOpen, setIsAIDrawerOpen] = React.useState(false);
@@ -101,7 +101,7 @@ export const DashboardPage: React.FC = () => {
             dataSourceName="Real-time bot"
             thresholdMinutes={15}
           />
-          <RemoteStatusPanel health={botBackend.healthDetails} account={accountInfo} />
+          <GlobalStatusIndicator health={botBackend.healthDetails} websocketStatus={liveWs.connectionState} />
 
           {systemNotification && (
             <div className="px-3 py-2 bg-indigo-950/60 border border-indigo-700/60 rounded flex items-center justify-between text-xs font-mono text-indigo-200 shadow-sm">
@@ -186,6 +186,8 @@ export const DashboardPage: React.FC = () => {
               backendStatus={botBackend.connectionStatus}
               websocketStatus={liveWs.connectionState}
               reconciliationStatus={reconData.data?.status}
+              health={botBackend.healthDetails}
+              account={accountInfo}
             />
           )}
         </main>
