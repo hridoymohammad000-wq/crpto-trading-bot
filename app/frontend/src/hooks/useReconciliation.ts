@@ -46,9 +46,19 @@ export function useReconciliation(): UseReconciliationReturn {
   }, []);
 
   useEffect(() => {
-    fetchRecon();
-    const interval = setInterval(fetchRecon, 15000); // 15s refresh
-    return () => clearInterval(interval);
+    let timeoutId: number;
+    let isCancelled = false;
+    const poll = async () => {
+      await fetchRecon();
+      if (!isCancelled) {
+        timeoutId = window.setTimeout(poll, 15000);
+      }
+    };
+    void poll();
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [fetchRecon]);
 
   return {

@@ -681,6 +681,7 @@ class BybitDemoClient(ExchangeClient):
         take_profit: Decimal | None = None,
         order_link_id: str | None = None,
         reduce_only: bool = False,
+        allow_unprotected_entry: bool = False,
     ) -> OrderAcknowledgement:
         if not symbol.endswith("USDT"):
             raise ValueError(f"Unsupported symbol: {symbol}")
@@ -701,17 +702,18 @@ class BybitDemoClient(ExchangeClient):
         if order_link_id:
             body["orderLinkId"] = order_link_id
         if not reduce_only:
-            if stop_loss is None or take_profit is None:
-                raise ValueError("opening orders require stop_loss and take_profit")
-            body.update(
-                {
-                    "stopLoss": self._format_decimal(stop_loss),
-                    "takeProfit": self._format_decimal(take_profit),
-                    "tpslMode": "Full",
-                    "tpOrderType": "Market",
-                    "slOrderType": "Market",
-                }
-            )
+            if not allow_unprotected_entry:
+                if stop_loss is None or take_profit is None:
+                    raise ValueError("opening orders require stop_loss and take_profit")
+                body.update(
+                    {
+                        "stopLoss": self._format_decimal(stop_loss),
+                        "takeProfit": self._format_decimal(take_profit),
+                        "tpslMode": "Full",
+                        "tpOrderType": "Market",
+                        "slOrderType": "Market",
+                    }
+                )
 
         payload = await self._post("/v5/order/create", body=body)
         result = payload.get("result")

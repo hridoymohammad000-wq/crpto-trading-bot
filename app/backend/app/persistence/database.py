@@ -217,6 +217,20 @@ class PersistenceDatabase:
             conn.executescript(self._schema_sql())
             self._ensure_execution_columns(conn)
             self._ensure_mae_mfe_columns(conn)
+            self._ensure_indexes(conn)
+
+    def _ensure_indexes(self, conn: Any) -> None:
+        if self.database_url:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_order_link_id ON execution_submissions(order_link_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_order_id ON execution_submissions(order_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_symbol ON execution_submissions(symbol);")
+        else:
+            conn.executescript("""
+                CREATE INDEX IF NOT EXISTS idx_exec_order_link_id ON execution_submissions(order_link_id);
+                CREATE INDEX IF NOT EXISTS idx_exec_order_id ON execution_submissions(order_id);
+                CREATE INDEX IF NOT EXISTS idx_exec_symbol ON execution_submissions(symbol);
+            """)
+
 
     def _ensure_mae_mfe_columns(self, conn: Any) -> None:
         """Additive migration for persisted intratrade diagnostics."""
@@ -1011,14 +1025,23 @@ class PersistenceDatabase:
             )
 
     def list_closed_trades(self, limit: int = 100) -> list[ClosedTradeResponse]:
-        """Return persisted closed trades enriched with the closest durable entry intent.
-
-        Bybit closed-PnL does not expose a reliable human-readable close reason.
-        We therefore only label SL/TP when the exit price is consistent with a
-        recorded protection level; otherwise the ledger explicitly says that the
-        cause is not available instead of inventing one.
-        """
+        """Return persisted closed trades enriched with the closest durable entry intent."""
         self.initialize()
+        
+        def safe_get(r, key, default=None):
+            try:
+                val = r[key]
+                return val if val is not None else default
+            except (KeyError, IndexError, TypeError, ValueError):
+                return default
+
+        def has_key(r, key):
+            try:
+                _ = r[key]
+                return True
+            except (KeyError, IndexError, TypeError, ValueError):
+                return False
+
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -1029,73 +1052,110 @@ class PersistenceDatabase:
                 (limit,),
             ).fetchall()
 
+            if not rows:
+                return []
+
+            link_ids = list({safe_get(r, "order_link_id") for r in rows if safe_get(r, "order_link_id")})
+            order_ids = list({safe_get(r, "order_id") for r in rows if safe_get(r, "order_id")})
+
+            executions_by_link = {}
+            if link_ids:
+                placeholders = ",".join(["?"] * len(link_ids))
+                q = f"""
+                    SELECT e.*, s.strategy 
+                    FROM execution_submissions e
+                    LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
+                    WHERE e.order_link_id IN ({placeholders})
+                    ORDER BY e.submitted_at ASC
+                """
+                for r in conn.execute(q, link_ids).fetchall():
+                    executions_by_link[safe_get(r, "order_link_id")] = r
+
+            executions_by_order = {}
+            if order_ids:
+                placeholders = ",".join(["?"] * len(order_ids))
+                q = f"""
+                    SELECT e.*, s.strategy 
+                    FROM execution_submissions e
+                    LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
+                    WHERE e.order_id IN ({placeholders})
+                    ORDER BY e.submitted_at ASC
+                """
+                for r in conn.execute(q, order_ids).fetchall():
+                    executions_by_order[safe_get(r, "order_id")] = r
+
+            unmatched = [r for r in rows if (
+                not (safe_get(r, "order_link_id") and safe_get(r, "order_link_id") in executions_by_link) and 
+                not (safe_get(r, "order_id") and safe_get(r, "order_id") in executions_by_order)
+            )]
+            
+            executions_by_sym_qty = {}
+            if unmatched:
+                where_clauses = []
+                params = []
+                for r in unmatched:
+                    where_clauses.append("(e.symbol=? AND CAST(e.quantity AS REAL)=CAST(? AS REAL))")
+                    params.extend([safe_get(r, "symbol"), safe_get(r, "quantity")])
+                
+                if where_clauses:
+                    for i in range(0, len(where_clauses), 400):
+                        chunk_clauses = where_clauses[i:i+400]
+                        chunk_params = params[i*2:(i+400)*2]
+                        q = f"""
+                            SELECT e.*, s.strategy 
+                            FROM execution_submissions e
+                            LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
+                            WHERE {' OR '.join(chunk_clauses)}
+                            ORDER BY e.submitted_at DESC
+                        """
+                        for r in conn.execute(q, chunk_params).fetchall():
+                            try:
+                                qty_val = float(safe_get(r, "quantity", 0))
+                            except Exception:
+                                qty_val = 0.0
+                            executions_by_sym_qty.setdefault((safe_get(r, "symbol"), qty_val), []).append(r)
+
             output: list[ClosedTradeResponse] = []
             for row in rows:
-                closed_at = row["updated_at"] or row["created_at"] or row["synced_at"]
+                closed_at = safe_get(row, "updated_at") or safe_get(row, "created_at") or safe_get(row, "synced_at")
                 execution = None
 
-                # FIX: Match priority: order_link_id > order_id > symbol+quantity(CAST)
-                trade_order_link_id = row["order_link_id"] if "order_link_id" in row.keys() else None
-                if trade_order_link_id:
-                    execution = conn.execute(
-                        """
-                        SELECT e.*, s.strategy
-                        FROM execution_submissions e
-                        LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
-                        WHERE e.order_link_id=?
-                        ORDER BY e.submitted_at DESC
-                        LIMIT 1
-                        """,
-                        (trade_order_link_id,),
-                    ).fetchone()
-                else:
-                    execution = None
-
-                if execution is None and row["order_id"]:
-                    execution = conn.execute(
-                        """
-                        SELECT e.*, s.strategy
-                        FROM execution_submissions e
-                        LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
-                        WHERE e.order_id=?
-                        ORDER BY e.submitted_at DESC
-                        LIMIT 1
-                        """,
-                        (row["order_id"],),
-                    ).fetchone()
-
+                trade_order_link_id = safe_get(row, "order_link_id")
+                if trade_order_link_id and trade_order_link_id in executions_by_link:
+                    execution = executions_by_link[trade_order_link_id]
+                
+                trade_order_id = safe_get(row, "order_id")
+                if execution is None and trade_order_id and trade_order_id in executions_by_order:
+                    execution = executions_by_order[trade_order_id]
+                
                 if execution is None:
-                    execution = conn.execute(
-                        """
-                        SELECT e.*, s.strategy
-                        FROM execution_submissions e
-                        LEFT JOIN signal_activity s ON s.signal_id=e.signal_id
-                        WHERE e.symbol=?
-                          AND CAST(e.quantity AS REAL)=CAST(? AS REAL)
-                          AND e.submitted_at<=?
-                        ORDER BY e.submitted_at DESC
-                        LIMIT 1
-                        """,
-                        (row["symbol"], row["quantity"], closed_at),
-                    ).fetchone()
+                    try:
+                        r_qty = float(safe_get(row, "quantity", 0))
+                    except Exception:
+                        r_qty = 0.0
+                    cands = executions_by_sym_qty.get((safe_get(row, "symbol"), r_qty), [])
+                    for cand in cands:
+                        if safe_get(cand, "submitted_at") <= closed_at:
+                            execution = cand
+                            break
 
                 stop_loss = (
-                    Decimal(execution["stop_loss"])
-                    if execution is not None and execution["stop_loss"] is not None
+                    Decimal(safe_get(execution, "stop_loss"))
+                    if execution is not None and safe_get(execution, "stop_loss") is not None
                     else None
                 )
                 take_profit = (
-                    Decimal(execution["take_profit"])
-                    if execution is not None and execution["take_profit"] is not None
+                    Decimal(safe_get(execution, "take_profit"))
+                    if execution is not None and safe_get(execution, "take_profit") is not None
                     else None
                 )
-                exit_price = Decimal(row["exit_price"]) if row["exit_price"] is not None else None
-                realized_pnl = Decimal(row["realized_pnl"])
-                side = str(row["side"])
+                exit_price = Decimal(safe_get(row, "exit_price")) if safe_get(row, "exit_price") is not None else None
+                realized_pnl = Decimal(safe_get(row, "realized_pnl"))
+                side = str(safe_get(row, "side"))
 
                 exit_reason: str
                 diagnostic_reason: str
-                tolerance = Decimal("0.003")  # 0.3% allows normal stop/market slippage.
+                tolerance = Decimal("0.003")
 
                 def _near(a: Decimal | None, b: Decimal | None) -> bool:
                     if a is None or b is None or b == 0:
@@ -1126,68 +1186,27 @@ class PersistenceDatabase:
                     exit_reason = "BREAKEVEN"
                     diagnostic_reason = "Trade closed approximately flat."
 
-                # Persist the attribution so the trade ledger keeps the reason
-                # across restarts. Existing values are refreshed only from the
-                # same deterministic correlation logic.
-                strategy = (str(execution["strategy"]) if execution is not None and execution["strategy"] else row["strategy"])
-                if execution is None and row["exit_reason"]:
-                    exit_reason = str(row["exit_reason"])
-                    diagnostic_reason = str(row["diagnostic_reason"] or diagnostic_reason)
-                    stop_loss = Decimal(row["stop_loss"]) if row["stop_loss"] is not None else stop_loss
-                    take_profit = Decimal(row["take_profit"]) if row["take_profit"] is not None else take_profit
-
-                conn.execute(
-                    """
-                    UPDATE closed_trades
-                    SET strategy=?, stop_loss=?, take_profit=?, exit_reason=?, diagnostic_reason=?
-                    WHERE trade_key=?
-                    """,
-                    (
-                        strategy,
-                        str(stop_loss) if stop_loss is not None else None,
-                        str(take_profit) if take_profit is not None else None,
-                        exit_reason,
-                        diagnostic_reason,
-                        row["trade_key"],
-                    ),
-                )
-
                 output.append(
                     ClosedTradeResponse(
-                        symbol=row["symbol"],
+                        trade_key=safe_get(row, "trade_key"),
+                        symbol=safe_get(row, "symbol"),
+                        order_id=safe_get(row, "order_id"),
+                        order_link_id=safe_get(row, "order_link_id"),
                         side=side,
-                        quantity=Decimal(row["quantity"]),
-                        entry_price=Decimal(row["entry_price"]) if row["entry_price"] is not None else None,
+                        quantity=Decimal(safe_get(row, "quantity")),
+                        entry_price=Decimal(safe_get(row, "entry_price")) if safe_get(row, "entry_price") else None,
                         exit_price=exit_price,
                         realized_pnl=realized_pnl,
-                        open_fee=Decimal(row["open_fee"]) if row["open_fee"] is not None else None,
-                        close_fee=Decimal(row["close_fee"]) if row["close_fee"] is not None else None,
-                        order_id=row["order_id"],
-                        order_link_id=row["order_link_id"] if "order_link_id" in row.keys() else None,
-                        created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
-                        updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
-                        strategy=strategy,
-                        stop_loss=stop_loss,
-                        take_profit=take_profit,
+                        fees=Decimal(safe_get(row, "fees", "0")),
                         exit_reason=exit_reason,
                         diagnostic_reason=diagnostic_reason,
-                        mae_price=Decimal(row["mae_price"]) if row["mae_price"] is not None else None,
-                        mfe_price=Decimal(row["mfe_price"]) if row["mfe_price"] is not None else None,
-                        mae_pct=Decimal(row["mae_pct"]) if row["mae_pct"] is not None else None,
-                        mfe_pct=Decimal(row["mfe_pct"]) if row["mfe_pct"] is not None else None,
-                        mae_r=Decimal(row["mae_r"]) if row["mae_r"] is not None else None,
-                        mfe_r=Decimal(row["mfe_r"]) if row["mfe_r"] is not None else None,
-                        sl_distance=Decimal(row["sl_distance"]) if row["sl_distance"] is not None else None,
-                        sl_distance_atr=Decimal(row["sl_distance_atr"]) if row["sl_distance_atr"] is not None else None,
-                        mae_at=datetime.fromisoformat(row["mae_at"]) if row["mae_at"] else None,
-                        mfe_at=datetime.fromisoformat(row["mfe_at"]) if row["mfe_at"] else None,
-                        root_cause=row["root_cause"],
-                        root_cause_evidence=row["root_cause_evidence"],
-                        excursion_status=row["excursion_status"],
+                        strategy=str(safe_get(execution, "strategy")) if execution and safe_get(execution, "strategy") else None,
+                        signal_id=str(safe_get(execution, "signal_id")) if execution else None,
+                        closed_at=closed_at,
                     )
                 )
 
-        return output
+            return output
 
     def get_daily_baseline(self, trading_day: date) -> Decimal | None:
         self.initialize()
