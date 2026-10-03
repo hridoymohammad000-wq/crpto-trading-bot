@@ -28,6 +28,7 @@ class ScheduledHealthWatchdog:
         self._persistence = persistence
         self._exchange = exchange
         self._interval_seconds = interval_seconds
+        self._startup_time = datetime.now(timezone.utc)
         
         self._task: asyncio.Task[None] | None = None
         self._running = False
@@ -94,7 +95,10 @@ class ScheduledHealthWatchdog:
         last_scan = getattr(self._scanner_engine, "_last_universe_refresh", None)
         if last_scan:
             ls_time = datetime.fromisoformat(last_scan.replace("Z", "+00:00")) if isinstance(last_scan, str) else last_scan
-            if (now - ls_time).total_seconds() > 300:
+            if (now - ls_time).total_seconds() > 1200:
+                current_incidents.add("Scanner stalled")
+        else:
+            if (now - self._startup_time).total_seconds() > 1200:
                 current_incidents.add("Scanner stalled")
                 
         # 5. Position Manager inactive

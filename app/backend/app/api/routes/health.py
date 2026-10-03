@@ -54,12 +54,16 @@ async def health(request: Request) -> dict[str, Any]:
 
     # Determine critical states
     scanner_stalled = False
-    if scanner_running and last_scan_at:
-        try:
-            ls_time = datetime.fromisoformat(last_scan_at.replace("Z", "+00:00")) if isinstance(last_scan_at, str) else last_scan_at
-            scanner_stalled = (now - ls_time).total_seconds() > 300
-        except Exception:
-            pass
+    if scanner_running:
+        if last_scan_at:
+            try:
+                ls_time = datetime.fromisoformat(last_scan_at.replace("Z", "+00:00")) if isinstance(last_scan_at, str) else last_scan_at
+                scanner_stalled = (now - ls_time).total_seconds() > 1200
+            except Exception:
+                pass
+        else:
+            if uptime_seconds > 1200:
+                scanner_stalled = True
 
     db_write_failure = not db_healthy
     bybit_disconnected = not bybit_connected
