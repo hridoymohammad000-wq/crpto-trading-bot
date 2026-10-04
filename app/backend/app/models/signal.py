@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
@@ -14,6 +14,7 @@ class StrategyName(StrEnum):
     SMC_STRATEGY = "SMC_STRATEGY"
     AMD_STRATEGY = "AMD_STRATEGY"
     LIQUIDITY_SWEEP = "LIQUIDITY_SWEEP"
+    ALPHAFLOW = "ALPHAFLOW"
 
 
 class SignalSide(StrEnum):

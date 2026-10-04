@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+﻿from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     # Execution candidates are selected by the scanner watchlist by default.
     # Set STATIC to use EXECUTION_SYMBOL_ALLOWLIST instead.
     EXECUTION_SELECTION_MODE: str = "SCANNER"
+    STRATEGY_MODE: str = "alphaflow"
     EXECUTION_SYMBOL_ALLOWLIST: str = "BTCUSDT"
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
