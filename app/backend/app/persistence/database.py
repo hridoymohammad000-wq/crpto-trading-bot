@@ -216,6 +216,7 @@ class PersistenceDatabase:
         with self._schema_lock, self._connect() as conn:
             conn.executescript(self._schema_sql())
             self._ensure_execution_columns(conn)
+            self._ensure_closed_trade_columns(conn)
             self._ensure_mae_mfe_columns(conn)
             self._ensure_indexes(conn)
 
