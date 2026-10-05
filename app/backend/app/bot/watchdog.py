@@ -73,8 +73,11 @@ class ScheduledHealthWatchdog:
         now = datetime.now(timezone.utc)
         current_incidents = set()
         
-        # 1. Backend/runtime unhealthy
-        if not self._bot_runtime.worker_running:
+        # 1. Trading runtime state
+        # Keep runtime incident tracking for alert lifecycle/deduplication,
+        # but do not label the FastAPI backend itself as DOWN.
+        runtime_running = self._bot_runtime.worker_running
+        if not runtime_running:
             current_incidents.add("Backend/runtime unhealthy")
             
         # 2. Bybit disconnected / auth/API failure
@@ -92,14 +95,16 @@ class ScheduledHealthWatchdog:
             current_incidents.add("Database unavailable or DB write failure")
             
         # 4. Scanner stalled
+        # Scanner freshness only matters while the trading runtime is running.
         last_scan = getattr(self._scanner_engine, "_last_universe_refresh", None)
-        if last_scan:
-            ls_time = datetime.fromisoformat(last_scan.replace("Z", "+00:00")) if isinstance(last_scan, str) else last_scan
-            if (now - ls_time).total_seconds() > 1200:
-                current_incidents.add("Scanner stalled")
-        else:
-            if (now - self._startup_time).total_seconds() > 1200:
-                current_incidents.add("Scanner stalled")
+        if runtime_running:
+            if last_scan:
+                ls_time = datetime.fromisoformat(last_scan.replace("Z", "+00:00")) if isinstance(last_scan, str) else last_scan
+                if (now - ls_time).total_seconds() > 1200:
+                    current_incidents.add("Scanner stalled")
+            else:
+                if (now - self._startup_time).total_seconds() > 1200:
+                    current_incidents.add("Scanner stalled")
                 
         # 5. Position Manager inactive
         # (Covered by Backend/runtime unhealthy, but we can keep the open_positions check)
@@ -110,8 +115,9 @@ class ScheduledHealthWatchdog:
             current_incidents.add("Open position exists while Position Manager inactive")
             
         # 7. Reconciliation stale or mismatch
+        # Reconciliation freshness only matters while runtime is running.
         last_recon = getattr(self._reconciliation_engine, "_last_time", None)
-        if last_recon:
+        if runtime_running and last_recon:
             lr_time = datetime.fromisoformat(last_recon.replace("Z", "+00:00")) if isinstance(last_recon, str) else last_recon
             if (now - lr_time).total_seconds() > 600:
                 current_incidents.add("Reconciliation stale or mismatch")
@@ -147,11 +153,16 @@ class ScheduledHealthWatchdog:
         open_positions = len(self._bot_runtime._position_manager._open_positions) if hasattr(self._bot_runtime, "_position_manager") and hasattr(self._bot_runtime._position_manager, "_open_positions") else 0
         
         msg = f"🚨 <b>CRYPTO BOT ALERT</b> ({alert_type})\n\n"
-        msg += f"<b>Problem:</b> {problem}\n"
+        display_problem = (
+            "Bot runtime stopped"
+            if problem == "Backend/runtime unhealthy"
+            else problem
+        )
+        msg += f"<b>Problem:</b> {display_problem}\n"
         msg += "<b>Environment:</b> BYBIT DEMO\n"
         msg += f"<b>Time:</b> {now.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         msg += f"<b>Last Scan:</b> {last_scan}\n"
-        msg += f"<b>Backend:</b> {'UP' if self._bot_runtime.worker_running else 'DOWN'}\n"
+        msg += "<b>Backend:</b> UP\n"
         msg += f"<b>Bybit:</b> {'CONNECTED' if getattr(self._exchange, 'is_connected', lambda: True)() else 'DISCONNECTED'}\n"
         try:
             self._persistence.health()
